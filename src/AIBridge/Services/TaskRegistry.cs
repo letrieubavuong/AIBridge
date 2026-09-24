@@ -1,4 +1,6 @@
 using System.Collections.Concurrent;
+using System.Collections.Generic;
+using System.Linq;
 using AIBridge.Models;
 
 namespace AIBridge.Services;
@@ -47,6 +49,20 @@ public class TaskRegistry : ITaskRegistry
         }
     }
 
+    public void RecordGitEvidence(string taskId, GitEvidence evidence)
+    {
+        ArgumentNullException.ThrowIfNull(taskId);
+        ArgumentNullException.ThrowIfNull(evidence);
+
+        if (_records.TryGetValue(taskId, out var record))
+        {
+            lock (_lock)
+            {
+                record.GitEvidence = evidence;
+            }
+        }
+    }
+
     public AgentTask? GetTask(string taskId)
     {
         return _records.TryGetValue(taskId, out var record) ? record.Task : null;
@@ -55,6 +71,11 @@ public class TaskRegistry : ITaskRegistry
     public TaskExecutionRecord? GetRecord(string taskId)
     {
         return _records.TryGetValue(taskId, out var record) ? record : null;
+    }
+
+    public GitEvidence? GetGitEvidence(string taskId)
+    {
+        return _records.TryGetValue(taskId, out var record) ? record.GitEvidence : null;
     }
 
     public TaskExecutionRecord? GetCurrentRecord()

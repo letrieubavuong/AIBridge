@@ -18,6 +18,10 @@ public class MainViewModel : ObservableObject
     private readonly IAntigravityEnvironmentService _environmentService;
     private readonly ICodingAgentRunner _antigravityRunner;
     private readonly IBridgeServer _bridgeServer;
+    private readonly IGitEnvironmentService _gitEnvironmentService;
+    private readonly IGitCommandService _gitCommandService;
+    private readonly IGitEvidenceService _gitEvidenceService;
+    private readonly ITaskRegistry _taskRegistry;
 
     private AppConfig _config = new();
     private string _antigravityPath = string.Empty;
@@ -39,6 +43,21 @@ public class MainViewModel : ObservableObject
     private bool _isCliMissing;
     private bool _isAuthRequired;
 
+    // Git / GitHub Section Properties
+    private string _gitStatusText = "Checking...";
+    private string _gitVersionText = "-";
+    private string _gitRepoText = "-";
+    private string _gitBranchText = "-";
+    private string _gitHeadText = "-";
+    private string _gitWorkingTreeText = "-";
+    private string _gitRemoteText = "-";
+    private string _gitPushStateText = "-";
+    private string _lastTaskCommitText = "-";
+    private string _lastTaskChangedFilesText = "0 files";
+    private bool _hasPreExistingChanges;
+    private bool _hasEvidenceAvailable;
+    private string _evidenceSummaryText = "No task evidence available yet.";
+
     // Bridge Section Properties
     private bool _isTokenMasked = true;
 
@@ -48,7 +67,7 @@ public class MainViewModel : ObservableObject
         {
             var version = Assembly.GetExecutingAssembly().GetName().Version;
             var versionStr = version != null ? $"{version.Major}.{version.Minor}.{version.Build}" : "1.0.0";
-            return $"v{versionStr} (Phase 03)";
+            return $"v{versionStr} (Phase 04)";
         }
     }
 
@@ -184,6 +203,85 @@ public class MainViewModel : ObservableObject
         set => SetProperty(ref _isAuthRequired, value);
     }
 
+    // Git Section Public Properties
+    public string GitStatusText
+    {
+        get => _gitStatusText;
+        set => SetProperty(ref _gitStatusText, value);
+    }
+
+    public string GitVersionText
+    {
+        get => _gitVersionText;
+        set => SetProperty(ref _gitVersionText, value);
+    }
+
+    public string GitRepoText
+    {
+        get => _gitRepoText;
+        set => SetProperty(ref _gitRepoText, value);
+    }
+
+    public string GitBranchText
+    {
+        get => _gitBranchText;
+        set => SetProperty(ref _gitBranchText, value);
+    }
+
+    public string GitHeadText
+    {
+        get => _gitHeadText;
+        set => SetProperty(ref _gitHeadText, value);
+    }
+
+    public string GitWorkingTreeText
+    {
+        get => _gitWorkingTreeText;
+        set => SetProperty(ref _gitWorkingTreeText, value);
+    }
+
+    public string GitRemoteText
+    {
+        get => _gitRemoteText;
+        set => SetProperty(ref _gitRemoteText, value);
+    }
+
+    public string GitPushStateText
+    {
+        get => _gitPushStateText;
+        set => SetProperty(ref _gitPushStateText, value);
+    }
+
+    public string LastTaskCommitText
+    {
+        get => _lastTaskCommitText;
+        set => SetProperty(ref _lastTaskCommitText, value);
+    }
+
+    public string LastTaskChangedFilesText
+    {
+        get => _lastTaskChangedFilesText;
+        set => SetProperty(ref _lastTaskChangedFilesText, value);
+    }
+
+    public bool HasPreExistingChanges
+    {
+        get => _hasPreExistingChanges;
+        set => SetProperty(ref _hasPreExistingChanges, value);
+    }
+
+    public bool HasEvidenceAvailable
+    {
+        get => _hasEvidenceAvailable;
+        set => SetProperty(ref _hasEvidenceAvailable, value);
+    }
+
+    public string EvidenceSummaryText
+    {
+        get => _evidenceSummaryText;
+        set => SetProperty(ref _evidenceSummaryText, value);
+    }
+
     public ObservableCollection<LogEntry> LogEntries => _logService.LogEntries;
 
     // Commands
@@ -201,6 +299,9 @@ public class MainViewModel : ObservableObject
     public ICommand CopyTokenCommand { get; }
     public ICommand RegenerateTokenCommand { get; }
     public ICommand ToggleTokenMaskCommand { get; }
+    public ICommand RefreshGitCommand { get; }
+    public ICommand ViewEvidenceCommand { get; }
+    public ICommand PushGitCommand { get; }
 
     public MainViewModel(
         IConfigService configService,
@@ -208,7 +309,11 @@ public class MainViewModel : ObservableObject
         ITaskService taskService,
         IAntigravityEnvironmentService environmentService,
         ICodingAgentRunner antigravityRunner,
-        IBridgeServer bridgeServer)
+        IBridgeServer bridgeServer,
+        IGitEnvironmentService? gitEnvironmentService = null,
+        IGitCommandService? gitCommandService = null,
+        IGitEvidenceService? gitEvidenceService = null,
+        ITaskRegistry? taskRegistry = null)
     {
         _configService = configService ?? throw new ArgumentNullException(nameof(configService));
         _logService = logService ?? throw new ArgumentNullException(nameof(logService));
@@ -216,6 +321,11 @@ public class MainViewModel : ObservableObject
         _environmentService = environmentService ?? throw new ArgumentNullException(nameof(environmentService));
         _antigravityRunner = antigravityRunner ?? throw new ArgumentNullException(nameof(antigravityRunner));
         _bridgeServer = bridgeServer ?? throw new ArgumentNullException(nameof(bridgeServer));
+
+        _gitCommandService = gitCommandService ?? new GitCommandService(_logService);
+        _gitEnvironmentService = gitEnvironmentService ?? new GitEnvironmentService(_logService, _gitCommandService);
+        _gitEvidenceService = gitEvidenceService ?? new GitEvidenceService(_logService, _gitEnvironmentService, _gitCommandService);
+        _taskRegistry = taskRegistry ?? new TaskRegistry();
 
         BrowseAntigravityCommand = new RelayCommand(ExecuteBrowseAntigravity);
         TestAntigravityCommand = new AsyncRelayCommand(ExecuteTestAntigravityAsync);
@@ -232,6 +342,10 @@ public class MainViewModel : ObservableObject
         CopyTokenCommand = new RelayCommand(ExecuteCopyToken);
         RegenerateTokenCommand = new AsyncRelayCommand(ExecuteRegenerateTokenAsync);
         ToggleTokenMaskCommand = new RelayCommand(ExecuteToggleTokenMask);
+
+        RefreshGitCommand = new AsyncRelayCommand(ExecuteRefreshGitAsync);
+        ViewEvidenceCommand = new RelayCommand(ExecuteViewEvidence);
+        PushGitCommand = new AsyncRelayCommand(ExecutePushGitAsync);
 
         _taskService.CurrentTaskChanged += OnCurrentTaskChanged;
         _taskService.TaskUpdated += OnTaskUpdated;
@@ -495,6 +609,119 @@ public class MainViewModel : ObservableObject
         }
     }
 
+    private async Task ExecuteRefreshGitAsync()
+    {
+        GitStatusText = "Checking...";
+        var gitEnv = await _gitEnvironmentService.DetectAndVerifyEnvironmentAsync(WorkspacePath, _config.GitPath);
+
+        RunOnUi(() =>
+        {
+            if (!gitEnv.GitInstalled)
+            {
+                GitStatusText = "NOT INSTALLED";
+                GitVersionText = "-";
+                GitRepoText = "-";
+                GitBranchText = "-";
+                GitHeadText = "-";
+                GitWorkingTreeText = "-";
+                GitRemoteText = "-";
+                GitPushStateText = "-";
+                return;
+            }
+
+            GitVersionText = !string.IsNullOrEmpty(gitEnv.Version) ? gitEnv.Version : "-";
+
+            if (!gitEnv.IsRepository)
+            {
+                GitStatusText = "NOT A REPO";
+                GitRepoText = "-";
+                GitBranchText = "-";
+                GitHeadText = "-";
+                GitWorkingTreeText = "-";
+                GitRemoteText = "-";
+                GitPushStateText = "-";
+                return;
+            }
+
+            GitStatusText = "READY";
+            try
+            {
+                GitRepoText = !string.IsNullOrEmpty(gitEnv.RepositoryRoot) ? Path.GetFileName(gitEnv.RepositoryRoot) : "-";
+            }
+            catch
+            {
+                GitRepoText = gitEnv.RepositoryRoot;
+            }
+
+            GitBranchText = !string.IsNullOrEmpty(gitEnv.Branch) ? gitEnv.Branch : "HEAD";
+            GitRemoteText = !string.IsNullOrEmpty(gitEnv.RemoteName) ? gitEnv.RemoteName : "None";
+        });
+
+        if (gitEnv.GitInstalled && gitEnv.IsRepository)
+        {
+            var gitExe = gitEnv.GitPath;
+            var repoRoot = gitEnv.RepositoryRoot;
+            var headSha = await _gitCommandService.GetHeadShaAsync(repoRoot, gitExe) ?? string.Empty;
+            var headShort = headSha.Length >= 7 ? headSha[..7] : headSha;
+            var (_, _, isDirty) = await _gitCommandService.GetStatusAsync(repoRoot, gitExe);
+            var (ahead, _) = await _gitCommandService.GetAheadBehindAsync(repoRoot, gitEnv.Branch, gitEnv.RemoteName, gitExe);
+
+            RunOnUi(() =>
+            {
+                GitHeadText = headShort;
+                GitWorkingTreeText = isDirty ? "DIRTY" : "CLEAN";
+                GitPushStateText = string.IsNullOrEmpty(gitEnv.RemoteName) ? "NOT CONFIG" : (ahead == 0 ? "PUSHED" : "NOT PUSHED");
+            });
+        }
+    }
+
+    private void ExecuteViewEvidence()
+    {
+        MessageBox.Show(
+            EvidenceSummaryText,
+            "Git Evidence Summary",
+            MessageBoxButton.OK,
+            MessageBoxImage.Information
+        );
+    }
+
+    private async Task ExecutePushGitAsync()
+    {
+        if (string.IsNullOrWhiteSpace(WorkspacePath))
+        {
+            MessageBox.Show("Workspace path is not configured.", "Push Git", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+
+        var gitEnv = await _gitEnvironmentService.DetectAndVerifyEnvironmentAsync(WorkspacePath, _config.GitPath);
+        if (!gitEnv.GitInstalled || !gitEnv.IsRepository)
+        {
+            MessageBox.Show("Workspace is not a valid Git repository.", "Push Git", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+
+        var prompt = $"Push current commits to remote '{gitEnv.RemoteName}' on branch '{gitEnv.Branch}'?";
+        var confirm = MessageBox.Show(prompt, "Confirm Git Push", MessageBoxButton.YesNo, MessageBoxImage.Question);
+        if (confirm != MessageBoxResult.Yes)
+        {
+            return;
+        }
+
+        _logService.LogInfo($"User triggered manual Git push to {gitEnv.RemoteName}/{gitEnv.Branch}...");
+        var (success, pushState, message) = await _gitEvidenceService.PushTaskCommitAsync(CurrentTaskId, WorkspacePath, _config);
+
+        if (success)
+        {
+            MessageBox.Show($"Git Push Succeeded: {message}", "Push Success", MessageBoxButton.OK, MessageBoxImage.Information);
+        }
+        else
+        {
+            MessageBox.Show($"Git Push Failed ({pushState}): {message}", "Push Failed", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+
+        await ExecuteRefreshGitAsync();
+    }
+
     private async Task ExecuteValidateWorkspaceAsync()
     {
         if (string.IsNullOrWhiteSpace(WorkspacePath))
@@ -508,6 +735,8 @@ public class MainViewModel : ObservableObject
         var (isValid, message) = await _antigravityRunner.ValidateWorkspaceAsync(WorkspacePath);
         WorkspaceStatus = isValid ? "Ready" : "Not Found";
         _logService.LogInfo($"Workspace status updated to: {WorkspaceStatus} ({message})");
+
+        await ExecuteRefreshGitAsync();
     }
 
     private bool CanSubmitTask()
@@ -579,6 +808,10 @@ public class MainViewModel : ObservableObject
                 CurrentTaskStarted = "-";
                 CurrentTaskCompleted = "-";
                 IsTaskRunning = false;
+                HasEvidenceAvailable = false;
+                HasPreExistingChanges = false;
+                LastTaskCommitText = "-";
+                LastTaskChangedFilesText = "0 files";
                 return;
             }
 
@@ -587,6 +820,55 @@ public class MainViewModel : ObservableObject
             CurrentTaskStarted = task.StartedAt?.ToString("HH:mm:ss") ?? "-";
             CurrentTaskCompleted = task.CompletedAt?.ToString("HH:mm:ss") ?? "-";
             IsTaskRunning = task.Status == AgentTaskStatus.Running;
+
+            // Fetch Evidence if available
+            var evidence = _taskRegistry.GetGitEvidence(task.Id);
+            if (evidence != null)
+            {
+                HasEvidenceAvailable = true;
+                HasPreExistingChanges = evidence.PreExistingChanges;
+                LastTaskCommitText = !string.IsNullOrEmpty(evidence.NewCommitShortSha) ? evidence.NewCommitShortSha : (evidence.AfterSnapshot?.HeadShortSha ?? "-");
+                LastTaskChangedFilesText = $"{evidence.ChangedFiles.Count} files";
+
+                var sb = new System.Text.StringBuilder();
+                sb.AppendLine($"Task ID: {evidence.TaskId}");
+                sb.AppendLine($"Repository: {evidence.IsRepository} ({evidence.AfterSnapshot?.RepositoryRoot})");
+                sb.AppendLine($"Branch: {evidence.AfterSnapshot?.Branch} | Remote: {evidence.AfterSnapshot?.RemoteName}");
+                sb.AppendLine($"Pre-existing Changes: {evidence.PreExistingChanges}");
+                sb.AppendLine($"Head Changed: {evidence.HeadChanged}");
+                sb.AppendLine($"New Commit Detected: {evidence.NewCommitDetected}");
+
+                if (evidence.NewCommitDetected)
+                {
+                    sb.AppendLine($"Commit SHA: {evidence.NewCommitSha}");
+                    sb.AppendLine($"Commit Message: {evidence.NewCommitMessage}");
+                }
+
+                sb.AppendLine($"Changed Files Count: {evidence.ChangedFiles.Count}");
+                foreach (var cf in evidence.ChangedFiles.Take(10))
+                {
+                    sb.AppendLine($"  - [{cf.Status}] {cf.Path}");
+                }
+
+                if (evidence.ChangedFiles.Count > 10)
+                {
+                    sb.AppendLine($"  ... and {evidence.ChangedFiles.Count - 10} more files.");
+                }
+
+                sb.AppendLine($"Push State: {evidence.PushState}");
+                if (!string.IsNullOrEmpty(evidence.Diff))
+                {
+                    sb.AppendLine("\n--- Diff Preview ---");
+                    sb.AppendLine(evidence.Diff.Length > 500 ? evidence.Diff.Substring(0, 500) + "\n..." : evidence.Diff);
+                }
+
+                EvidenceSummaryText = sb.ToString();
+            }
+            else
+            {
+                HasEvidenceAvailable = false;
+                HasPreExistingChanges = false;
+            }
         });
     }
 

@@ -80,6 +80,7 @@ public class AntigravityEnvironmentService : IAntigravityEnvironmentService
     public async Task<AntigravityEnvironmentInfo> DetectAndVerifyEnvironmentAsync(string? configuredPath = null)
     {
         _logService.LogInfo("Detecting Antigravity CLI environment...");
+        var previousAuthState = _currentInfo.AuthState;
         var info = new AntigravityEnvironmentInfo
         {
             InstallationState = CliInstallationState.Checking,
@@ -133,8 +134,15 @@ public class AntigravityEnvironmentService : IAntigravityEnvironmentService
                 info.StatusMessage = $"Antigravity CLI verified: agy {stdout} ({resolvedExecutable})";
                 _logService.LogInfo(info.StatusMessage);
 
-                // Check authentication state
-                info.AuthState = await CheckAuthenticationAsync(resolvedExecutable);
+                // Check authentication state (reuse cached Ready state if executable path has not changed)
+                if (previousAuthState == CliAuthState.Ready)
+                {
+                    info.AuthState = CliAuthState.Ready;
+                }
+                else
+                {
+                    info.AuthState = await CheckAuthenticationAsync(resolvedExecutable);
+                }
             }
             else
             {
@@ -281,7 +289,7 @@ public class AntigravityEnvironmentService : IAntigravityEnvironmentService
             var stdoutTask = process.StandardOutput.ReadToEndAsync();
             var stderrTask = process.StandardError.ReadToEndAsync();
 
-            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(15));
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(120));
             await process.WaitForExitAsync(cts.Token);
 
             var stdout = (await stdoutTask).Trim();

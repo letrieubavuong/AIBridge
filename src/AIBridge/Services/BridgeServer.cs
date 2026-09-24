@@ -23,6 +23,9 @@ public class BridgeServer : IBridgeServer
     private readonly ITaskRegistry _taskRegistry;
     private readonly IAntigravityEnvironmentService _environmentService;
     private readonly ICodingAgentRunner _antigravityRunner;
+    private readonly IGitEnvironmentService _gitEnvironmentService;
+    private readonly IGitCommandService _gitCommandService;
+    private readonly IGitEvidenceService _gitEvidenceService;
 
     private WebApplication? _app;
     private BridgeStatus _status = BridgeStatus.Stopped;
@@ -70,7 +73,10 @@ public class BridgeServer : IBridgeServer
         ITaskService taskService,
         ITaskRegistry taskRegistry,
         IAntigravityEnvironmentService environmentService,
-        ICodingAgentRunner antigravityRunner)
+        ICodingAgentRunner antigravityRunner,
+        IGitEnvironmentService? gitEnvironmentService = null,
+        IGitCommandService? gitCommandService = null,
+        IGitEvidenceService? gitEvidenceService = null)
     {
         _configService = configService ?? throw new ArgumentNullException(nameof(configService));
         _logService = logService ?? throw new ArgumentNullException(nameof(logService));
@@ -78,6 +84,10 @@ public class BridgeServer : IBridgeServer
         _taskRegistry = taskRegistry ?? throw new ArgumentNullException(nameof(taskRegistry));
         _environmentService = environmentService ?? throw new ArgumentNullException(nameof(environmentService));
         _antigravityRunner = antigravityRunner ?? throw new ArgumentNullException(nameof(antigravityRunner));
+
+        _gitCommandService = gitCommandService ?? new GitCommandService(_logService);
+        _gitEnvironmentService = gitEnvironmentService ?? new GitEnvironmentService(_logService, _gitCommandService);
+        _gitEvidenceService = gitEvidenceService ?? new GitEvidenceService(_logService, _gitEnvironmentService, _gitCommandService);
     }
 
     public async Task<bool> StartAsync()
@@ -453,6 +463,155 @@ public class BridgeServer : IBridgeServer
                 });
 
             return Results.Ok(logs);
+        });
+
+        // GET /api/git/environment
+        app.MapGet("/api/git/environment", async (string? workspacePath) =>
+        {
+            var config = _configService.LoadConfig();
+            var targetWorkspace = string.IsNullOrWhiteSpace(workspacePath) ? config.WorkspacePath : workspacePath;
+            var gitEnv = await _gitEnvironmentService.DetectAndVerifyEnvironmentAsync(targetWorkspace, config.GitPath);
+
+            return Results.Ok(new
+            {
+                gitInstalled = gitEnv.GitInstalled,
+                version = gitEnv.Version,
+                gitPath = gitEnv.GitPath,
+                isRepository = gitEnv.IsRepository,
+                repositoryRoot = gitEnv.RepositoryRoot,
+                branch = gitEnv.Branch,
+                remoteConfigured = gitEnv.RemoteConfigured,
+                remoteName = gitEnv.RemoteName,
+                remoteUrlSafe = gitEnv.RemoteUrlSafe
+            });
+        });
+
+        // GET /api/git/status
+        app.MapGet("/api/git/status", async (string? workspacePath) =>
+        {
+            var config = _configService.LoadConfig();
+            var targetWorkspace = string.IsNullOrWhiteSpace(workspacePath) ? config.WorkspacePath : workspacePath;
+            var gitEnv = await _gitEnvironmentService.DetectAndVerifyEnvironmentAsync(targetWorkspace, config.GitPath);
+
+            if (!gitEnv.GitInstalled)
+            {
+                return Results.Json(new ErrorResponse
+                {
+                    Error = "GIT_NOT_INSTALLED",
+                    Message = "Git CLI is not installed or available."
+                }, statusCode: StatusCodes.Status503ServiceUnavailable);
+            }
+
+            if (!gitEnv.IsRepository)
+            {
+                return Results.Json(new ErrorResponse
+                {
+                    Error = "NOT_A_GIT_REPOSITORY",
+                    Message = "Configured workspace is not a Git repository."
+                }, statusCode: StatusCodes.Status400BadRequest);
+            }
+
+            var gitExe = gitEnv.GitPath;
+            var repoRoot = gitEnv.RepositoryRoot;
+            var headSha = await _gitCommandService.GetHeadShaAsync(repoRoot, gitExe) ?? string.Empty;
+            var headShort = headSha.Length >= 7 ? headSha[..7] : headSha;
+            var headMsg = await _gitCommandService.GetHeadMessageAsync(repoRoot, headSha, gitExe) ?? string.Empty;
+            var (_, _, isDirty) = await _gitCommandService.GetStatusAsync(repoRoot, gitExe);
+            var (ahead, behind) = await _gitCommandService.GetAheadBehindAsync(repoRoot, gitEnv.Branch, gitEnv.RemoteName, gitExe);
+
+            string pushState = string.IsNullOrEmpty(gitEnv.RemoteName) ? "NotConfigured" : (ahead == 0 ? "Pushed" : "NotPushed");
+
+            var repoInfo = new GitRepositoryInfo
+            {
+                IsGitRepository = true,
+                RepositoryRoot = repoRoot,
+                Branch = gitEnv.Branch,
+                HeadSha = headSha,
+                HeadShortSha = headShort,
+                HeadMessage = headMsg,
+                RemoteName = gitEnv.RemoteName,
+                RemoteUrlSafe = gitEnv.RemoteUrlSafe,
+                IsDirty = isDirty,
+                Ahead = ahead,
+                Behind = behind,
+                PushState = pushState
+            };
+
+            return Results.Ok(repoInfo);
+        });
+
+        // GET /api/tasks/{taskId}/git
+        app.MapGet("/api/tasks/{taskId}/git", (string taskId) =>
+        {
+            var record = _taskRegistry.GetRecord(taskId);
+            if (record == null)
+            {
+                return Results.Json(new ErrorResponse
+                {
+                    Error = "TASK_NOT_FOUND",
+                    Message = $"Task '{taskId}' was not found."
+                }, statusCode: StatusCodes.Status404NotFound);
+            }
+
+            if (record.GitEvidence == null)
+            {
+                return Results.Ok(new
+                {
+                    taskId = taskId,
+                    status = record.Task.Status == AgentTaskStatus.Running ? "Pending" : "Unavailable"
+                });
+            }
+
+            return Results.Ok(record.GitEvidence);
+        });
+
+        // POST /api/tasks/{taskId}/git/push
+        app.MapPost("/api/tasks/{taskId}/git/push", async (string taskId) =>
+        {
+            var record = _taskRegistry.GetRecord(taskId);
+            if (record == null)
+            {
+                return Results.Json(new ErrorResponse
+                {
+                    Error = "TASK_NOT_FOUND",
+                    Message = $"Task '{taskId}' was not found."
+                }, statusCode: StatusCodes.Status404NotFound);
+            }
+
+            var config = _configService.LoadConfig();
+            var (success, pushState, message) = await _gitEvidenceService.PushTaskCommitAsync(taskId, record.Task.WorkspacePath, config);
+
+            if (success)
+            {
+                if (record.GitEvidence != null)
+                {
+                    record.GitEvidence.PushState = "Pushed";
+                }
+                return Results.Ok(new
+                {
+                    taskId = taskId,
+                    pushState = pushState,
+                    message = message
+                });
+            }
+            else
+            {
+                int statusCode = pushState switch
+                {
+                    "PUSH_REQUIRES_APPROVAL" => StatusCodes.Status403Forbidden,
+                    "NO_COMMIT_TO_PUSH" => StatusCodes.Status400BadRequest,
+                    "NOT_A_GIT_REPOSITORY" => StatusCodes.Status400BadRequest,
+                    "GIT_NOT_AVAILABLE" => StatusCodes.Status503ServiceUnavailable,
+                    "GIT_AUTH_REQUIRED" => StatusCodes.Status401Unauthorized,
+                    _ => StatusCodes.Status500InternalServerError
+                };
+
+                return Results.Json(new ErrorResponse
+                {
+                    Error = pushState,
+                    Message = message
+                }, statusCode: statusCode);
+            }
         });
     }
 

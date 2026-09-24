@@ -16,7 +16,11 @@ public partial class App : Application
         ILogService logService = new LogService();
         IConfigService configService = new ConfigService(logService);
         ITaskRegistry taskRegistry = new TaskRegistry();
-        _taskService = new TaskService(logService, taskRegistry);
+        IGitCommandService gitCmdService = new GitCommandService(logService);
+        IGitEnvironmentService gitEnvService = new GitEnvironmentService(logService, gitCmdService);
+        IGitEvidenceService gitEvidenceService = new GitEvidenceService(logService, gitEnvService, gitCmdService);
+
+        _taskService = new TaskService(logService, taskRegistry, gitEvidenceService, configService);
         IAntigravityEnvironmentService environmentService = new AntigravityEnvironmentService(logService);
 
         var config = configService.LoadConfig();
@@ -32,7 +36,10 @@ public partial class App : Application
             _taskService,
             taskRegistry,
             environmentService,
-            antigravityRunner
+            antigravityRunner,
+            gitEnvService,
+            gitCmdService,
+            gitEvidenceService
         );
 
         var viewModel = new MainViewModel(

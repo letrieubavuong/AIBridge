@@ -1,4 +1,7 @@
+using System;
 using System.ComponentModel;
+using System.Threading;
+using System.Threading.Tasks;
 using AIBridge.Models;
 
 namespace AIBridge.Services;
@@ -7,42 +10,49 @@ public class TaskService : ITaskService
 {
     private readonly ILogService _logService;
     private readonly ITaskRegistry? _taskRegistry;
+    private readonly IGitEvidenceService? _gitEvidenceService;
+    private readonly IConfigService? _configService;
     private readonly SemaphoreSlim _executionSemaphore = new(1, 1);
     private AgentTask? _currentTask;
     private CancellationTokenSource? _currentCts;
-
-    public event Action<AgentTask?>? CurrentTaskChanged;
-    public event Action<AgentTask>? TaskUpdated;
 
     public AgentTask? CurrentTask
     {
         get => _currentTask;
         private set
         {
-            if (_currentTask != null)
+            if (_currentTask != value)
             {
-                _currentTask.PropertyChanged -= OnTaskPropertyChanged;
-            }
+                if (_currentTask != null)
+                {
+                    _currentTask.PropertyChanged -= OnTaskPropertyChanged;
+                }
 
-            _currentTask = value;
+                _currentTask = value;
 
-            if (_currentTask != null)
-            {
-                _currentTask.PropertyChanged += OnTaskPropertyChanged;
-            }
+                if (_currentTask != null)
+                {
+                    _currentTask.PropertyChanged += OnTaskPropertyChanged;
+                }
 
-            CurrentTaskChanged?.Invoke(_currentTask);
-            if (_currentTask != null)
-            {
-                TaskUpdated?.Invoke(_currentTask);
+                CurrentTaskChanged?.Invoke(_currentTask);
             }
         }
     }
 
-    public TaskService(ILogService logService, ITaskRegistry? taskRegistry = null)
+    public event Action<AgentTask?>? CurrentTaskChanged;
+    public event Action<AgentTask>? TaskUpdated;
+
+    public TaskService(
+        ILogService logService, 
+        ITaskRegistry? taskRegistry = null,
+        IGitEvidenceService? gitEvidenceService = null,
+        IConfigService? configService = null)
     {
         _logService = logService ?? throw new ArgumentNullException(nameof(logService));
         _taskRegistry = taskRegistry;
+        _gitEvidenceService = gitEvidenceService;
+        _configService = configService;
     }
 
     public bool TryAcquireExecutionSlot()
@@ -63,21 +73,20 @@ public class TaskService : ITaskService
         if (sender is AgentTask task)
         {
             TaskUpdated?.Invoke(task);
-            CurrentTaskChanged?.Invoke(task);
         }
     }
 
-    public AgentTask CreateTask(string prompt, string workspacePath, string? configuredAgentPath = null)
+    public AgentTask CreateTask(string prompt, string workspacePath, string? agentPath = null)
     {
         var task = new AgentTask
         {
             Prompt = prompt,
             WorkspacePath = workspacePath,
-            ConfiguredAgentPath = configuredAgentPath,
+            ConfiguredAgentPath = agentPath ?? string.Empty,
             Status = AgentTaskStatus.Pending,
             CreatedAt = DateTime.Now
         };
-        _logService.LogInfo($"New agent task created with ID: {task.Id} (Status: Pending)");
+
         _taskRegistry?.RegisterTask(task);
         return task;
     }
@@ -88,50 +97,51 @@ public class TaskService : ITaskService
         ArgumentNullException.ThrowIfNull(runner);
 
         CurrentTask = task;
-        task.StartedAt = DateTime.Now;
-        task.Status = AgentTaskStatus.Running;
-        _logService.LogInfo($"Task {task.Id} status transition -> Running with runner '{runner.Name}'.");
-
         _currentCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
 
-        AgentResult result;
+        _logService.LogInfo($"Submitting task '{task.Id}' with prompt: \"{task.Prompt}\"");
 
+        task.StartedAt = DateTime.Now;
+        task.Status = AgentTaskStatus.Running;
+
+        GitSnapshot? beforeSnapshot = null;
+        var config = _configService?.LoadConfig();
+
+        if (_gitEvidenceService != null && !string.IsNullOrWhiteSpace(task.WorkspacePath))
+        {
+            try
+            {
+                beforeSnapshot = await _gitEvidenceService.CaptureSnapshotAsync(task.WorkspacePath, config?.GitPath, _currentCts.Token);
+            }
+            catch (Exception ex)
+            {
+                _logService.LogWarning($"Failed to capture Git before-snapshot: {ex.Message}");
+            }
+        }
+
+        AgentResult result;
+        AgentTaskStatus finalStatus;
         try
         {
             result = await runner.ExecuteAsync(task, _currentCts.Token);
-            
-            task.CompletedAt = DateTime.Now;
-            if (result.Success)
-            {
-                task.Status = AgentTaskStatus.Success;
-                _logService.LogInfo($"Task {task.Id} status transition -> Success.");
-            }
-            else
-            {
-                task.Status = AgentTaskStatus.Failed;
-                _logService.LogWarning($"Task {task.Id} status transition -> Failed: {result.ErrorMessage}");
-            }
+            finalStatus = result.Success ? AgentTaskStatus.Success : AgentTaskStatus.Failed;
         }
         catch (OperationCanceledException)
         {
-            task.CompletedAt = DateTime.Now;
-            task.Status = AgentTaskStatus.Cancelled;
-            _logService.LogWarning($"Task {task.Id} status transition -> Cancelled.");
-
+            finalStatus = AgentTaskStatus.Cancelled;
             result = new AgentResult
             {
                 Success = false,
                 ExitCode = -1,
                 StartedAt = task.StartedAt ?? DateTime.Now,
                 CompletedAt = DateTime.Now,
-                ErrorMessage = "Task execution was cancelled by user."
+                ErrorMessage = "Task execution was cancelled."
             };
         }
         catch (Exception ex)
         {
-            task.CompletedAt = DateTime.Now;
-            task.Status = AgentTaskStatus.Failed;
-            _logService.LogError($"Unexpected error while executing task {task.Id}", ex);
+            finalStatus = AgentTaskStatus.Failed;
+            _logService.LogError($"Unexpected error executing task '{task.Id}'", ex);
 
             result = new AgentResult
             {
@@ -149,7 +159,45 @@ public class TaskService : ITaskService
             ReleaseExecutionSlot();
         }
 
+        if (_gitEvidenceService != null && !string.IsNullOrWhiteSpace(task.WorkspacePath))
+        {
+            try
+            {
+                var afterSnapshot = await _gitEvidenceService.CaptureSnapshotAsync(task.WorkspacePath, config?.GitPath, CancellationToken.None);
+                var evidence = await _gitEvidenceService.CalculateEvidenceAsync(task.Id, task.WorkspacePath, beforeSnapshot, afterSnapshot, config?.GitPath, CancellationToken.None);
+
+                _taskRegistry?.RecordGitEvidence(task.Id, evidence);
+
+                if (config != null && config.GitAutoPush && result.Success && evidence.IsRepository && evidence.NewCommitDetected)
+                {
+                    _logService.LogInfo("GitAutoPush enabled: Attempting automatic push...");
+                    await _gitEvidenceService.PushTaskCommitAsync(task.Id, task.WorkspacePath, config, CancellationToken.None);
+                }
+            }
+            catch (Exception ex)
+            {
+                _logService.LogWarning($"Failed to calculate Git evidence: {ex.Message}");
+            }
+        }
+
+        task.CompletedAt = DateTime.Now;
+        task.Status = finalStatus;
+
         _taskRegistry?.RecordResult(task.Id, result);
+
+        if (finalStatus == AgentTaskStatus.Success)
+        {
+            _logService.LogInfo($"Task '{task.Id}' completed successfully.");
+        }
+        else if (finalStatus == AgentTaskStatus.Failed)
+        {
+            _logService.LogError($"Task '{task.Id}' failed: {result.ErrorMessage}");
+        }
+        else
+        {
+            _logService.LogWarning($"Task '{task.Id}' was cancelled.");
+        }
+
         return result;
     }
 
@@ -157,7 +205,7 @@ public class TaskService : ITaskService
     {
         if (_currentTask != null && _currentTask.Status == AgentTaskStatus.Running)
         {
-            _logService.LogInfo($"Cancellation requested for task {_currentTask.Id}.");
+            _logService.LogInfo($"Cancelling current task '{_currentTask.Id}'...");
             _currentCts?.Cancel();
         }
         else

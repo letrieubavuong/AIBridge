@@ -10,36 +10,38 @@ ChatGPT Brain / Orchestrator
       v (HTTP API: 127.0.0.1:8787)
 AIBridge.exe (BridgeServer)
       |
+      +---> GitEvidenceService (Before/After Snapshots, Diff, Secret Redaction)
+      |
       v (TaskService)
 AntigravityRunner (agy)
       |
       v
-Local Workspace / GitHub
+Local Workspace / GitHub Repository
 ```
 
 ### Roles & Responsibilities
 
-* **ChatGPT**: Brain (analyzes requirements, plans, generates prompts, delegates tasks, and reviews output).
-* **AIBridge**: Executor / Local Bridge (provides embedded REST API + WPF UI to execute tasks via coding agents).
+* **ChatGPT**: Brain (analyzes requirements, plans, generates prompts, delegates tasks, and reviews output using Git evidence).
+* **AIBridge**: Executor & Evidence Layer (provides embedded REST API + WPF UI to execute tasks via coding agents, captures Git evidence, safe push).
 * **Antigravity**: Primary Coding Agent (executes workspace modifications via `agy` CLI).
 
 ---
 
 ## Current Status
 
-`Phase 03 - Local Bridge API` (Completed)
+`Phase 04 - GitHub Integration & Evidence Layer` (Completed)
 
-Phase 03 embeds a local Kestrel HTTP API inside `AIBridge.exe` bound exclusively to `127.0.0.1:8787` with secure local Bearer token authentication, task registry, cancellation support, and live WPF UI synchronization.
+Phase 04 adds local Git discovery, pre/post task repository snapshotting, commit detection, bounded diff evidence collection (up to 256 KB) with secret redaction, remote branch push status, protected branch policies (`main`/`master`), and WPF compact evidence inspection.
 
 ---
 
-## Local Bridge API Documentation (Phase 03)
+## Local Bridge API Documentation
 
 - **Base URL**: `http://127.0.0.1:8787` (Localhost only)
 - **Authentication**: `Authorization: Bearer <API_TOKEN>` or `X-AIBridge-Token: <API_TOKEN>`
 - **Request Size Limit**: 256 KB
 
-### Endpoints
+### API Endpoints
 
 | Method | Endpoint | Auth Required | Description |
 |---|---|---|---|
@@ -50,39 +52,27 @@ Phase 03 embeds a local Kestrel HTTP API inside `AIBridge.exe` bound exclusively
 | `GET` | `/api/tasks/{taskId}` | Yes | Query detailed execution record, status, exit code, stdout/stderr |
 | `POST` | `/api/tasks/{taskId}/cancel` | Yes | Cancel running task execution |
 | `GET` | `/api/logs` | Yes | Get recent application log entries |
+| `GET` | `/api/git/environment` | Yes | Get local Git CLI version, installation status, and discovery path |
+| `GET` | `/api/git/status` | Yes | Query current Git repository status, branch, HEAD, dirty state, and remote |
+| `GET` | `/api/tasks/{taskId}/git` | Yes | Retrieve Git evidence (before/after snapshots, diff, commit range, changed files) |
+| `POST` | `/api/tasks/{taskId}/git/push` | Yes | Push task commit to remote under safe push policies (no force push) |
 
-### API Request & Response Examples
+---
 
-#### Submit Task (`POST /api/tasks`)
+## Git Evidence & Safety Policies (Phase 04)
 
-Request:
-```json
-{
-  "prompt": "Create a file named hello.txt with content: Hello World",
-  "workspacePath": "C:\\path\\to\\workspace"
-}
-```
+### Evidence Collection Lifecycle
+1. **Task Accepted**: `GitEvidenceService.CaptureSnapshotAsync()` captures `BeforeSnapshot` (HEAD SHA, branch, dirty state, untracked files).
+2. **Task Execution**: Antigravity executes task via `agy`.
+3. **Task Completion**: `GitEvidenceService.CaptureSnapshotAsync()` captures `AfterSnapshot` and calculates `GitEvidence`.
+4. **Diff Bounding & Redaction**: Diff text is bounded to 256 KB (`DiffTruncated = true` if exceeded) and scanned for credentials (`SecretRedactor`).
 
-Response (`202 Accepted`):
-```json
-{
-  "taskId": "a1b2c3d4e5f6...",
-  "status": "Pending"
-}
-```
-
-#### Health Check (`GET /api/health`)
-
-Response (`200 OK`):
-```json
-{
-  "status": "ok",
-  "bridge": "running",
-  "version": "1.0.0",
-  "machineName": "DESKTOP-NAME",
-  "timestamp": "2026-09-24T15:00:00.000Z"
-}
-```
+### Push & Protection Policy
+* **Default AutoPush**: `GitAutoPush = false` (Manual explicit trigger required).
+* **Protected Branches**: `main` and `master` are protected by default (`AllowPushToProtectedBranches = false`).
+* **Force Push**: Forbidden (`--force` and `--force-with-lease` are disabled).
+* **Non-Git Workspaces**: Fully supported; task execution completes with `status = NOT_A_GIT_REPOSITORY`.
+* **Git Not Installed**: Task execution completes with `status = GIT_NOT_INSTALLED`.
 
 ---
 
@@ -90,6 +80,7 @@ Response (`200 OK`):
 
 * Windows x64
 * .NET 10 SDK (`net10.0-windows`)
+* Git CLI (optional but recommended for Git evidence layer)
 
 ---
 
@@ -121,7 +112,7 @@ Output directory: `src/AIBridge/bin/Release/net10.0-windows/win-x64/publish/`
 - [x] **Phase 01 - Desktop Foundation** (WPF application layout, config service, logging, task abstraction)
 - [x] **Phase 02 - Antigravity Integration** (Verified CLI installation, authentication, and execution runner)
 - [x] **Phase 03 - Local Bridge API** (Embedded HTTP Server 127.0.0.1:8787, API auth token, task registry, REST endpoints)
-- [ ] **Phase 04 - ChatGPT Brain Integration** (API connection & prompt exchange layer)
-- [ ] **Phase 05 - GitHub Integration** (Branch management & Pull Request creation)
+- [x] **Phase 04 - GitHub Integration & Evidence Layer** (Git CLI wrapper, Before/After snapshots, evidence API, safe push policy, secret redaction)
+- [ ] **Phase 05 - ChatGPT Brain Foundation** (Brain-to-Bridge API connection & prompt exchange layer)
 - [ ] **Phase 06 - AI Review / Retry Loop** (Automated result evaluation & refinement loop)
 - [ ] **Phase 07 - Autonomous Orchestration** (Multi-agent end-to-end task execution)
