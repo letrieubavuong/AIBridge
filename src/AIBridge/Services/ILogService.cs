@@ -9,4 +9,5 @@ public interface ILogService
     void LogInfo(string message);
     void LogWarning(string message);
     void LogError(string message, Exception? exception = null);
+    IReadOnlyList<LogEntry> GetRecentLogs(int limit = 100);
 }

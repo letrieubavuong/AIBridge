@@ -5,31 +5,84 @@ AIBridge is a Windows desktop application serving as an execution bridge between
 ## Architecture
 
 ```text
-ChatGPT Brain
+ChatGPT Brain / Orchestrator
+      |
+      v (HTTP API: 127.0.0.1:8787)
+AIBridge.exe (BridgeServer)
+      |
+      v (TaskService)
+AntigravityRunner (agy)
       |
       v
-AIBridge
-      |
-      v
-Coding Agent (e.g., Antigravity)
-      |
-      v
-Workspace / GitHub
+Local Workspace / GitHub
 ```
 
 ### Roles & Responsibilities
 
 * **ChatGPT**: Brain (analyzes requirements, plans, generates prompts, delegates tasks, and reviews output).
-* **AIBridge**: Executor / Bridge (receives task prompts and delegates execution to coding agents).
-* **Antigravity**: Primary Coding Agent (executes workspace modifications).
+* **AIBridge**: Executor / Local Bridge (provides embedded REST API + WPF UI to execute tasks via coding agents).
+* **Antigravity**: Primary Coding Agent (executes workspace modifications via `agy` CLI).
 
 ---
 
 ## Current Status
 
-`Phase 01 - Desktop Foundation`
+`Phase 03 - Local Bridge API` (Completed)
 
-Phase 01 establishes the WPF desktop UI, configuration persistence in `%LOCALAPPDATA%\AIBridge\config.json`, task model abstractions (`ICodingAgentRunner`), logging service, workspace/agent validation, and portable self-contained build setup.
+Phase 03 embeds a local Kestrel HTTP API inside `AIBridge.exe` bound exclusively to `127.0.0.1:8787` with secure local Bearer token authentication, task registry, cancellation support, and live WPF UI synchronization.
+
+---
+
+## Local Bridge API Documentation (Phase 03)
+
+- **Base URL**: `http://127.0.0.1:8787` (Localhost only)
+- **Authentication**: `Authorization: Bearer <API_TOKEN>` or `X-AIBridge-Token: <API_TOKEN>`
+- **Request Size Limit**: 256 KB
+
+### Endpoints
+
+| Method | Endpoint | Auth Required | Description |
+|---|---|---|---|
+| `GET` | `/api/health` | No | Check bridge health, app version, and machine timestamp |
+| `GET` | `/api/environment` | Yes | Get Antigravity CLI installation, auth state, workspace state |
+| `POST` | `/api/tasks` | Yes | Submit prompt & workspace task (returns 202 Accepted with taskId) |
+| `GET` | `/api/tasks/current` | Yes | Query status of current running or latest task |
+| `GET` | `/api/tasks/{taskId}` | Yes | Query detailed execution record, status, exit code, stdout/stderr |
+| `POST` | `/api/tasks/{taskId}/cancel` | Yes | Cancel running task execution |
+| `GET` | `/api/logs` | Yes | Get recent application log entries |
+
+### API Request & Response Examples
+
+#### Submit Task (`POST /api/tasks`)
+
+Request:
+```json
+{
+  "prompt": "Create a file named hello.txt with content: Hello World",
+  "workspacePath": "C:\\path\\to\\workspace"
+}
+```
+
+Response (`202 Accepted`):
+```json
+{
+  "taskId": "a1b2c3d4e5f6...",
+  "status": "Pending"
+}
+```
+
+#### Health Check (`GET /api/health`)
+
+Response (`200 OK`):
+```json
+{
+  "status": "ok",
+  "bridge": "running",
+  "version": "1.0.0",
+  "machineName": "DESKTOP-NAME",
+  "timestamp": "2026-09-24T15:00:00.000Z"
+}
+```
 
 ---
 
@@ -46,17 +99,7 @@ To restore dependencies and build the solution:
 
 ```bash
 dotnet restore
-dotnet build --configuration Debug
-```
-
----
-
-## Run
-
-To run the application locally:
-
-```bash
-dotnet run --project src/AIBridge/AIBridge.csproj
+dotnet build AIBridge.sln -c Release
 ```
 
 ---
@@ -69,20 +112,15 @@ To create a portable, self-contained `win-x64` release distribution:
 dotnet publish src/AIBridge/AIBridge.csproj -c Release -r win-x64 --self-contained true
 ```
 
-The compiled binaries will be output to:
-`src/AIBridge/bin/Release/net10.0-windows/win-x64/publish/`
-
-You can copy the contents of the `publish/` directory to any 64-bit Windows machine to run `AIBridge.exe` without installing a runtime.
-
-> **Note on Publish Single File**: Standard folder publish is used by default for WPF to ensure reliable loading of native Windows WPF assemblies and dependencies.
+Output directory: `src/AIBridge/bin/Release/net10.0-windows/win-x64/publish/`
 
 ---
 
 ## Roadmap
 
 - [x] **Phase 01 - Desktop Foundation** (WPF application layout, config service, logging, task abstraction)
-- [ ] **Phase 02 - Antigravity Integration** (Verified CLI argument integration & process runner)
-- [ ] **Phase 03 - Local Bridge API** (Embedded HTTP Server / WebSockets endpoint for local API control)
+- [x] **Phase 02 - Antigravity Integration** (Verified CLI installation, authentication, and execution runner)
+- [x] **Phase 03 - Local Bridge API** (Embedded HTTP Server 127.0.0.1:8787, API auth token, task registry, REST endpoints)
 - [ ] **Phase 04 - ChatGPT Brain Integration** (API connection & prompt exchange layer)
 - [ ] **Phase 05 - GitHub Integration** (Branch management & Pull Request creation)
 - [ ] **Phase 06 - AI Review / Retry Loop** (Automated result evaluation & refinement loop)

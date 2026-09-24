@@ -6,6 +6,7 @@ namespace AIBridge.Services;
 public class TaskService : ITaskService
 {
     private readonly ILogService _logService;
+    private readonly ITaskRegistry? _taskRegistry;
     private AgentTask? _currentTask;
     private CancellationTokenSource? _currentCts;
 
@@ -37,9 +38,10 @@ public class TaskService : ITaskService
         }
     }
 
-    public TaskService(ILogService logService)
+    public TaskService(ILogService logService, ITaskRegistry? taskRegistry = null)
     {
         _logService = logService ?? throw new ArgumentNullException(nameof(logService));
+        _taskRegistry = taskRegistry;
     }
 
     private void OnTaskPropertyChanged(object? sender, PropertyChangedEventArgs e)
@@ -62,6 +64,7 @@ public class TaskService : ITaskService
             CreatedAt = DateTime.Now
         };
         _logService.LogInfo($"New agent task created with ID: {task.Id} (Status: Pending)");
+        _taskRegistry?.RegisterTask(task);
         return task;
     }
 
@@ -78,9 +81,11 @@ public class TaskService : ITaskService
 
         _currentCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
 
+        AgentResult result;
+
         try
         {
-            var result = await runner.ExecuteAsync(task, _currentCts.Token);
+            result = await runner.ExecuteAsync(task, _currentCts.Token);
             
             task.CompletedAt = DateTime.Now;
             if (result.Success)
@@ -93,8 +98,6 @@ public class TaskService : ITaskService
                 task.Status = AgentTaskStatus.Failed;
                 _logService.LogWarning($"Task {task.Id} status transition -> Failed: {result.ErrorMessage}");
             }
-
-            return result;
         }
         catch (OperationCanceledException)
         {
@@ -102,7 +105,7 @@ public class TaskService : ITaskService
             task.Status = AgentTaskStatus.Cancelled;
             _logService.LogWarning($"Task {task.Id} status transition -> Cancelled.");
 
-            return new AgentResult
+            result = new AgentResult
             {
                 Success = false,
                 ExitCode = -1,
@@ -117,7 +120,7 @@ public class TaskService : ITaskService
             task.Status = AgentTaskStatus.Failed;
             _logService.LogError($"Unexpected error while executing task {task.Id}", ex);
 
-            return new AgentResult
+            result = new AgentResult
             {
                 Success = false,
                 ExitCode = -1,
@@ -131,6 +134,9 @@ public class TaskService : ITaskService
             _currentCts?.Dispose();
             _currentCts = null;
         }
+
+        _taskRegistry?.RecordResult(task.Id, result);
+        return result;
     }
 
     public void CancelCurrentTask()

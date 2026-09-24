@@ -17,6 +17,7 @@ public class MainViewModel : ObservableObject
     private readonly ITaskService _taskService;
     private readonly IAntigravityEnvironmentService _environmentService;
     private readonly ICodingAgentRunner _antigravityRunner;
+    private readonly IBridgeServer _bridgeServer;
 
     private AppConfig _config = new();
     private string _antigravityPath = string.Empty;
@@ -38,18 +39,42 @@ public class MainViewModel : ObservableObject
     private bool _isCliMissing;
     private bool _isAuthRequired;
 
+    // Bridge Section Properties
+    private bool _isTokenMasked = true;
+
     public string AppVersionText
     {
         get
         {
             var version = Assembly.GetExecutingAssembly().GetName().Version;
             var versionStr = version != null ? $"{version.Major}.{version.Minor}.{version.Build}" : "1.0.0";
-            return $"v{versionStr} (Phase 02)";
+            return $"v{versionStr} (Phase 03)";
         }
     }
 
-    public string BridgeStatusText => "Ready";
+    public string BridgeStatusText => _bridgeServer?.Status.ToString().ToUpper() ?? "STOPPED";
+    public string BridgeHostPortText => $"{_config.BridgeHost}:{_config.BridgePort}";
     public int BridgePort => _config.BridgePort;
+
+    public string ApiTokenText => _config.ApiToken;
+    public string DisplayedApiTokenText => IsTokenMasked && !string.IsNullOrEmpty(_config.ApiToken) 
+        ? "••••••••••••••••" 
+        : (string.IsNullOrEmpty(_config.ApiToken) ? "(None)" : _config.ApiToken);
+
+    public bool IsTokenMasked
+    {
+        get => _isTokenMasked;
+        set
+        {
+            if (SetProperty(ref _isTokenMasked, value))
+            {
+                OnPropertyChanged(nameof(DisplayedApiTokenText));
+            }
+        }
+    }
+
+    public bool IsBridgeRunning => _bridgeServer?.Status == BridgeStatus.Running;
+    public bool IsBridgeStopped => _bridgeServer?.Status == BridgeStatus.Stopped || _bridgeServer?.Status == BridgeStatus.Error;
 
     public string AntigravityPath
     {
@@ -171,19 +196,26 @@ public class MainViewModel : ObservableObject
     public ICommand InstallCliCommand { get; }
     public ICommand CheckAuthCommand { get; }
     public ICommand AuthenticateCommand { get; }
+    public ICommand StartBridgeCommand { get; }
+    public ICommand StopBridgeCommand { get; }
+    public ICommand CopyTokenCommand { get; }
+    public ICommand RegenerateTokenCommand { get; }
+    public ICommand ToggleTokenMaskCommand { get; }
 
     public MainViewModel(
         IConfigService configService,
         ILogService logService,
         ITaskService taskService,
         IAntigravityEnvironmentService environmentService,
-        ICodingAgentRunner antigravityRunner)
+        ICodingAgentRunner antigravityRunner,
+        IBridgeServer bridgeServer)
     {
         _configService = configService ?? throw new ArgumentNullException(nameof(configService));
         _logService = logService ?? throw new ArgumentNullException(nameof(logService));
         _taskService = taskService ?? throw new ArgumentNullException(nameof(taskService));
         _environmentService = environmentService ?? throw new ArgumentNullException(nameof(environmentService));
         _antigravityRunner = antigravityRunner ?? throw new ArgumentNullException(nameof(antigravityRunner));
+        _bridgeServer = bridgeServer ?? throw new ArgumentNullException(nameof(bridgeServer));
 
         BrowseAntigravityCommand = new RelayCommand(ExecuteBrowseAntigravity);
         TestAntigravityCommand = new AsyncRelayCommand(ExecuteTestAntigravityAsync);
@@ -195,9 +227,16 @@ public class MainViewModel : ObservableObject
         CheckAuthCommand = new AsyncRelayCommand(ExecuteCheckAuthAsync);
         AuthenticateCommand = new AsyncRelayCommand(ExecuteAuthenticateAsync);
 
+        StartBridgeCommand = new AsyncRelayCommand(ExecuteStartBridgeAsync);
+        StopBridgeCommand = new AsyncRelayCommand(ExecuteStopBridgeAsync);
+        CopyTokenCommand = new RelayCommand(ExecuteCopyToken);
+        RegenerateTokenCommand = new AsyncRelayCommand(ExecuteRegenerateTokenAsync);
+        ToggleTokenMaskCommand = new RelayCommand(ExecuteToggleTokenMask);
+
         _taskService.CurrentTaskChanged += OnCurrentTaskChanged;
         _taskService.TaskUpdated += OnTaskUpdated;
         _environmentService.EnvironmentInfoChanged += OnEnvironmentInfoChanged;
+        _bridgeServer.StatusChanged += OnBridgeStatusChanged;
 
         InitializeViewModel();
     }
@@ -211,6 +250,9 @@ public class MainViewModel : ObservableObject
         _workspacePath = _config.WorkspacePath;
         OnPropertyChanged(nameof(AntigravityPath));
         OnPropertyChanged(nameof(WorkspacePath));
+        OnPropertyChanged(nameof(ApiTokenText));
+        OnPropertyChanged(nameof(DisplayedApiTokenText));
+        OnPropertyChanged(nameof(BridgeHostPortText));
 
         _logService.LogInfo("AIBridge Initialization Complete.");
 
@@ -220,6 +262,85 @@ public class MainViewModel : ObservableObject
         {
             _ = ExecuteValidateWorkspaceAsync();
         }
+
+        // Auto-start Local Bridge if enabled
+        if (_config.BridgeEnabled)
+        {
+            _logService.LogInfo("Auto-starting Local Bridge Server...");
+            _ = ExecuteStartBridgeAsync();
+        }
+    }
+
+    private void OnBridgeStatusChanged(BridgeStatus newStatus)
+    {
+        RunOnUi(() =>
+        {
+            OnPropertyChanged(nameof(BridgeStatusText));
+            OnPropertyChanged(nameof(IsBridgeRunning));
+            OnPropertyChanged(nameof(IsBridgeStopped));
+        });
+    }
+
+    private async Task ExecuteStartBridgeAsync()
+    {
+        await _bridgeServer.StartAsync();
+        _config = _configService.LoadConfig();
+        OnPropertyChanged(nameof(ApiTokenText));
+        OnPropertyChanged(nameof(DisplayedApiTokenText));
+    }
+
+    private async Task ExecuteStopBridgeAsync()
+    {
+        await _bridgeServer.StopAsync();
+    }
+
+    private void ExecuteCopyToken()
+    {
+        if (!string.IsNullOrEmpty(_config.ApiToken))
+        {
+            try
+            {
+                Clipboard.SetText(_config.ApiToken);
+                _logService.LogInfo("API Token copied to clipboard.");
+            }
+            catch (Exception ex)
+            {
+                _logService.LogError("Failed to copy API token to clipboard", ex);
+            }
+        }
+    }
+
+    private async Task ExecuteRegenerateTokenAsync()
+    {
+        var result = MessageBox.Show(
+            "Are you sure you want to regenerate the API authentication token?\nExisting clients will be invalidated.",
+            "Regenerate API Token",
+            MessageBoxButton.YesNo,
+            MessageBoxImage.Warning
+        );
+
+        if (result != MessageBoxResult.Yes)
+        {
+            return;
+        }
+
+        var newToken = BridgeServer.GenerateSecureToken();
+        _config.ApiToken = newToken;
+        _configService.SaveConfig(_config);
+
+        OnPropertyChanged(nameof(ApiTokenText));
+        OnPropertyChanged(nameof(DisplayedApiTokenText));
+        _logService.LogInfo("API Authentication Token regenerated successfully.");
+
+        if (_bridgeServer.Status == BridgeStatus.Running)
+        {
+            _logService.LogInfo("Applying new token to active Bridge Server...");
+        }
+    }
+
+    private void ExecuteToggleTokenMask()
+    {
+        IsTokenMasked = !IsTokenMasked;
     }
 
     private async Task RefreshEnvironmentAsync()
@@ -234,33 +355,36 @@ public class MainViewModel : ObservableObject
 
     private void UpdateEnvironmentUI(AntigravityEnvironmentInfo info)
     {
-        CliStateText = info.InstallationState switch
+        RunOnUi(() =>
         {
-            CliInstallationState.Ready => "READY",
-            CliInstallationState.NotInstalled => "NOT INSTALLED",
-            CliInstallationState.Error => "ERROR",
-            _ => "CHECKING..."
-        };
+            CliStateText = info.InstallationState switch
+            {
+                CliInstallationState.Ready => "READY",
+                CliInstallationState.NotInstalled => "NOT INSTALLED",
+                CliInstallationState.Error => "ERROR",
+                _ => "CHECKING..."
+            };
 
-        CliVersionText = !string.IsNullOrWhiteSpace(info.Version) ? info.Version : "-";
-        IsCliMissing = info.InstallationState == CliInstallationState.NotInstalled;
+            CliVersionText = !string.IsNullOrWhiteSpace(info.Version) ? info.Version : "-";
+            IsCliMissing = info.InstallationState == CliInstallationState.NotInstalled;
 
-        AuthStateText = info.AuthState switch
-        {
-            CliAuthState.Ready => "READY",
-            CliAuthState.Required => "REQUIRED",
-            CliAuthState.Error => "ERROR",
-            _ => "UNKNOWN"
-        };
+            AuthStateText = info.AuthState switch
+            {
+                CliAuthState.Ready => "READY",
+                CliAuthState.Required => "REQUIRED",
+                CliAuthState.Error => "ERROR",
+                _ => "UNKNOWN"
+            };
 
-        IsAuthRequired = info.AuthState == CliAuthState.Required;
+            IsAuthRequired = info.AuthState == CliAuthState.Required;
 
-        AntigravityStatus = info.InstallationState == CliInstallationState.Ready ? "Ready" : "Not Found";
-        if (!string.IsNullOrWhiteSpace(info.ExecutablePath) && string.IsNullOrWhiteSpace(AntigravityPath))
-        {
-            _antigravityPath = info.ExecutablePath;
-            OnPropertyChanged(nameof(AntigravityPath));
-        }
+            AntigravityStatus = info.InstallationState == CliInstallationState.Ready ? "Ready" : "Not Found";
+            if (!string.IsNullOrWhiteSpace(info.ExecutablePath) && string.IsNullOrWhiteSpace(AntigravityPath))
+            {
+                _antigravityPath = info.ExecutablePath;
+                OnPropertyChanged(nameof(AntigravityPath));
+            }
+        });
     }
 
     private void OnEnvironmentInfoChanged(AntigravityEnvironmentInfo info)
@@ -437,21 +561,24 @@ public class MainViewModel : ObservableObject
 
     private void UpdateTaskUI(AgentTask? task)
     {
-        if (task == null)
+        RunOnUi(() =>
         {
-            CurrentTaskId = "-";
-            CurrentTaskStatusText = "Idle";
-            CurrentTaskStarted = "-";
-            CurrentTaskCompleted = "-";
-            IsTaskRunning = false;
-            return;
-        }
+            if (task == null)
+            {
+                CurrentTaskId = "-";
+                CurrentTaskStatusText = "Idle";
+                CurrentTaskStarted = "-";
+                CurrentTaskCompleted = "-";
+                IsTaskRunning = false;
+                return;
+            }
 
-        CurrentTaskId = task.Id;
-        CurrentTaskStatusText = task.Status.ToString();
-        CurrentTaskStarted = task.StartedAt?.ToString("HH:mm:ss") ?? "-";
-        CurrentTaskCompleted = task.CompletedAt?.ToString("HH:mm:ss") ?? "-";
-        IsTaskRunning = task.Status == AgentTaskStatus.Running;
+            CurrentTaskId = task.Id;
+            CurrentTaskStatusText = task.Status.ToString();
+            CurrentTaskStarted = task.StartedAt?.ToString("HH:mm:ss") ?? "-";
+            CurrentTaskCompleted = task.CompletedAt?.ToString("HH:mm:ss") ?? "-";
+            IsTaskRunning = task.Status == AgentTaskStatus.Running;
+        });
     }
 
     private void OnCurrentTaskChanged(AgentTask? task)
@@ -462,5 +589,17 @@ public class MainViewModel : ObservableObject
     private void OnTaskUpdated(AgentTask task)
     {
         UpdateTaskUI(task);
+    }
+
+    private void RunOnUi(Action action)
+    {
+        if (Application.Current?.Dispatcher != null && !Application.Current.Dispatcher.CheckAccess())
+        {
+            Application.Current.Dispatcher.BeginInvoke(action);
+        }
+        else
+        {
+            action();
+        }
     }
 }

@@ -6,22 +6,24 @@
         xmlns:viewmodels="clr-namespace:AIBridge.ViewModels"
         mc:Ignorable="d"
         Title="AIBridge — Real Execution Foundation" 
-        Height="800" Width="1120"
-        MinHeight="620" MinWidth="900"
+        Height="840" Width="1120"
+        MinHeight="660" MinWidth="900"
         WindowStartupLocation="CenterScreen"
         Background="{StaticResource BgBrush}">
 
     <Grid Margin="16">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
-            <!-- Header / Environment Status -->
+            <!-- 0. Header / Environment Status -->
             <RowDefinition Height="Auto" />
-            <!-- Configurations (Antigravity + Workspace) -->
+            <!-- 1. Local Bridge Panel -->
+            <RowDefinition Height="Auto" />
+            <!-- 2. Configurations (Antigravity + Workspace) -->
             <RowDefinition Height="*" />
-            <!-- Main Content (Prompt + Current Task + Logs) -->
+            <!-- 3. Main Content (Prompt + Current Task + Logs) -->
         </Grid.RowDefinitions>
 
-        <!-- 1. Header & Environment Overview -->
+        <!-- 0. Header & Environment Overview -->
         <Border Grid.Row="0" Background="{StaticResource CardBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="6" Padding="16,12" Margin="0,0,0,12">
             <Grid>
                 <Grid.ColumnDefinitions>
@@ -81,8 +83,50 @@
             </Grid>
         </Border>
 
+        <!-- 1. Local Bridge Server Panel -->
+        <Border Grid.Row="1" Background="{StaticResource CardBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="6" Padding="14,10" Margin="0,0,0,12">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+
+                <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
+                    <TextBlock Text="LOCAL BRIDGE" FontWeight="Bold" Foreground="{StaticResource PrimaryBrush}" FontSize="13" VerticalAlignment="Center" Margin="0,0,12,0"/>
+                    <Border Background="#1E1E2E" Padding="8,3" CornerRadius="4" Margin="0,0,8,0">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="Status: " Foreground="{StaticResource SubTextBrush}" FontSize="12"/>
+                            <TextBlock Text="{Binding BridgeStatusText}" Foreground="{StaticResource AccentBrush}" FontWeight="Bold" FontSize="12"/>
+                        </StackPanel>
+                    </Border>
+                    <Border Background="#1E1E2E" Padding="8,3" CornerRadius="4" Margin="0,0,8,0">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="Address: " Foreground="{StaticResource SubTextBrush}" FontSize="12"/>
+                            <TextBlock Text="{Binding BridgeHostPortText}" Foreground="{StaticResource TextBrush}" FontWeight="SemiBold" FontSize="12"/>
+                        </StackPanel>
+                    </Border>
+                    <Border Background="#1E1E2E" Padding="8,3" CornerRadius="4" Margin="0,0,8,0">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="Token: " Foreground="{StaticResource SubTextBrush}" FontSize="12"/>
+                            <TextBlock Text="{Binding DisplayedApiTokenText}" Foreground="{StaticResource TextBrush}" FontFamily="Consolas" FontSize="11" VerticalAlignment="Center"/>
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
+
+                <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
+                    <Button Content="Show/Hide" Command="{Binding ToggleTokenMaskCommand}" Padding="8,3" Margin="0,0,6,0" FontSize="11"/>
+                    <Button Content="Copy Token" Command="{Binding CopyTokenCommand}" Padding="8,3" Margin="0,0,6,0" FontSize="11"/>
+                    <Button Content="Regenerate" Command="{Binding RegenerateTokenCommand}" Padding="8,3" Margin="0,0,12,0" FontSize="11"/>
+                    
+                    <Button Content="START" Command="{Binding StartBridgeCommand}" Visibility="{Binding IsBridgeStopped, Converter={StaticResource BoolToVis}}" Background="{StaticResource AccentBrush}" Foreground="#1E1E2E" FontWeight="Bold" Padding="12,3" Margin="0,0,4,0"/>
+                    <Button Content="STOP" Command="{Binding StopBridgeCommand}" Visibility="{Binding IsBridgeRunning, Converter={StaticResource BoolToVis}}" Background="#FF5555" Foreground="White" FontWeight="Bold" Padding="12,3"/>
+                </StackPanel>
+            </Grid>
+        </Border>
+
         <!-- 2. Configurations (Antigravity & Workspace) -->
-        <Grid Grid.Row="1" Margin="0,0,0,12">
+        <Grid Grid.Row="2" Margin="0,0,0,12">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*" />
                 <ColumnDefinition Width="12" />
@@ -137,7 +181,7 @@
         </Grid>
 
         <!-- 3. Main Workspace Area (Prompt, Task, Actions, Logs) -->
-        <Grid Grid.Row="2">
+        <Grid Grid.Row="3">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="6*" />
                 <ColumnDefinition Width="12" />
