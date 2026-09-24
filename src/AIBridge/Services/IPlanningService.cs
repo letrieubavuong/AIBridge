@@ -8,7 +8,7 @@ namespace AIBridge.Services;
 public interface IPlanningService
 {
     Task<PlanningResult> GeneratePlanAsync(PlanningRequest request, CancellationToken cancellationToken = default);
-    Task<PlanningResult> RevisePlanAsync(string projectId, string revisionPrompt, CancellationToken cancellationToken = default);
+    Task<PlanningResult> RevisePlanAsync(string projectId, string revisionPrompt, bool allowProtectedHistoryRevision = false, CancellationToken cancellationToken = default);
     Task<PlanningResult> EditPlanAsync(ProjectPlan modifiedPlan, CancellationToken cancellationToken = default);
     Task<PlanningResult> ApprovePlanAsync(string projectId, string? approvalReason = null, CancellationToken cancellationToken = default);
     Task<ProjectPlan?> GetPlanAsync(string projectId, CancellationToken cancellationToken = default);

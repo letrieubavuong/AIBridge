@@ -122,20 +122,28 @@ public class PlanValidator : IPlanValidator
                 }
             }
 
-            // Phase dependency checks
-            if (phase.Dependencies != null)
+        }
+
+        // 3. Phase Dependency References and Self-Dependency Checks
+        foreach (var phase in plan.Phases)
+        {
+            if (phase.Dependencies != null && phase.Dependencies.Count > 0)
             {
                 foreach (var depPhaseId in phase.Dependencies)
                 {
                     if (string.Equals(depPhaseId, phase.PhaseId, StringComparison.OrdinalIgnoreCase))
                     {
-                        result.Errors.Add($"Phase '{phase.PhaseId}' has a self-dependency on itself.");
+                        result.Errors.Add($"Phase '{phase.PhaseId}' cannot depend on itself.");
+                    }
+                    else if (!phaseIds.Contains(depPhaseId))
+                    {
+                        result.Errors.Add($"Phase '{phase.PhaseId}' references non-existent dependency PhaseId '{depPhaseId}'.");
                     }
                 }
             }
         }
 
-        // 3. Task Dependency References and Self-Dependency Checks
+        // 4. Task Dependency References and Self-Dependency Checks
         foreach (var task in allTasks)
         {
             if (task.Dependencies != null && task.Dependencies.Count > 0)
@@ -154,7 +162,16 @@ public class PlanValidator : IPlanValidator
             }
         }
 
-        // 4. Dependency Cycle Detection (Task Graph)
+        // 5. Dependency Cycle Detection (Phase Graph)
+        if (HasPhaseDependencyCycle(plan.Phases, out var phaseCycleErrors))
+        {
+            foreach (var cycleError in phaseCycleErrors)
+            {
+                result.Errors.Add(cycleError);
+            }
+        }
+
+        // 6. Dependency Cycle Detection (Task Graph)
         if (HasTaskDependencyCycle(allTasks, out var cycleErrors))
         {
             foreach (var cycleError in cycleErrors)
@@ -202,9 +219,9 @@ public class PlanValidator : IPlanValidator
             {
                 foreach (var depId in currentTask.Dependencies)
                 {
-                    if (string.IsNullOrWhiteSpace(depId) || !map.ContainsKey(depId))
+                    if (string.IsNullOrWhiteSpace(depId) || !map.ContainsKey(depId) || string.Equals(depId, currentId, StringComparison.OrdinalIgnoreCase))
                     {
-                        continue; // Invalid/missing dependency handled separately
+                        continue; // Invalid, missing, or self-dependency handled separately
                     }
 
                     if (!st.TryGetValue(depId, out int depState) || depState == 0)
@@ -217,6 +234,67 @@ public class PlanValidator : IPlanValidator
                         var cyclePath = startIndex >= 0 ? p.Skip(startIndex).ToList() : p.ToList();
                         cyclePath.Add(depId);
                         cycles.Add($"Dependency cycle detected: {string.Join(" -> ", cyclePath)}");
+                        return true;
+                    }
+                }
+            }
+
+            st[currentId] = 2; // Visited
+            p.RemoveAt(p.Count - 1);
+            return false;
+        }
+    }
+
+    private static bool HasPhaseDependencyCycle(List<PhasePlan> allPhases, out List<string> cycleDetails)
+    {
+        cycleDetails = new List<string>();
+        var phaseMap = allPhases.Where(p => !string.IsNullOrWhiteSpace(p.PhaseId))
+                                .GroupBy(p => p.PhaseId, StringComparer.OrdinalIgnoreCase)
+                                .ToDictionary(g => g.Key, g => g.First(), StringComparer.OrdinalIgnoreCase);
+
+        // 0 = Unvisited, 1 = Visiting, 2 = Visited
+        var state = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        var path = new List<string>();
+
+        foreach (var phase in allPhases)
+        {
+            if (string.IsNullOrWhiteSpace(phase.PhaseId)) continue;
+
+            if (!state.TryGetValue(phase.PhaseId, out int s) || s == 0)
+            {
+                if (Dfs(phase.PhaseId, phaseMap, state, path, cycleDetails))
+                {
+                    return true;
+                }
+            }
+        }
+
+        return cycleDetails.Count > 0;
+
+        bool Dfs(string currentId, Dictionary<string, PhasePlan> map, Dictionary<string, int> st, List<string> p, List<string> cycles)
+        {
+            st[currentId] = 1; // Visiting
+            p.Add(currentId);
+
+            if (map.TryGetValue(currentId, out var currentPhase) && currentPhase.Dependencies != null)
+            {
+                foreach (var depId in currentPhase.Dependencies)
+                {
+                    if (string.IsNullOrWhiteSpace(depId) || !map.ContainsKey(depId) || string.Equals(depId, currentId, StringComparison.OrdinalIgnoreCase))
+                    {
+                        continue; // Invalid, missing, or self-dependency handled separately
+                    }
+
+                    if (!st.TryGetValue(depId, out int depState) || depState == 0)
+                    {
+                        if (Dfs(depId, map, st, p, cycles)) return true;
+                    }
+                    else if (depState == 1) // Cycle detected
+                    {
+                        int startIndex = p.IndexOf(depId);
+                        var cyclePath = startIndex >= 0 ? p.Skip(startIndex).ToList() : p.ToList();
+                        cyclePath.Add(depId);
+                        cycles.Add($"Phase dependency cycle detected: {string.Join(" -> ", cyclePath)}");
                         return true;
                     }
                 }

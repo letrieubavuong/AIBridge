@@ -142,6 +142,132 @@ public class PlanningServiceTests : IDisposable
         Assert.Equal(2, versions.Count);
     }
 
+    // --- TEST 1 — ACTIVE PLAN WITHOUT COMPLETED WORK ---
+    [Fact]
+    public async Task RevisePlan_ActivePlanWithoutCompletedWork_AllowsRevisionWithoutGate()
+    {
+        var request = new PlanningRequest { ProjectName = "Active Proj", Idea = "Initial Idea" };
+        var genResult = await _planningService.GeneratePlanAsync(request);
+        Assert.True(genResult.Success);
+
+        var plan = genResult.ProjectPlan!;
+        plan.Status = ProjectPlanStatus.Active;
+        await _store.SavePlanAsync(plan);
+
+        int initialBrainCount = _mockBrain.CallCount;
+
+        var reviseResult = await _planningService.RevisePlanAsync(plan.ProjectId, "Minor tweak", allowProtectedHistoryRevision: false);
+
+        Assert.True(reviseResult.Success);
+        Assert.True(_mockBrain.CallCount > initialBrainCount);
+        Assert.Equal(2, reviseResult.ProjectPlan!.Version);
+    }
+
+    // --- TEST 2 — COMPLETED PHASE PROTECTION ---
+    [Fact]
+    public async Task RevisePlan_CompletedPhaseProtection_BlocksRevisionWithoutApproval()
+    {
+        var request = new PlanningRequest { ProjectName = "Completed Phase Proj", Idea = "Initial Idea" };
+        var genResult = await _planningService.GeneratePlanAsync(request);
+        var plan = genResult.ProjectPlan!;
+        plan.Status = ProjectPlanStatus.Active;
+        plan.Phases[0].Status = PhaseStatus.Completed;
+        await _store.SavePlanAsync(plan);
+
+        int initialBrainCount = _mockBrain.CallCount;
+
+        var reviseResult = await _planningService.RevisePlanAsync(plan.ProjectId, "Restructure completed phase", allowProtectedHistoryRevision: false);
+
+        Assert.False(reviseResult.Success);
+        Assert.Equal(PlanningErrorCode.ApprovalRequired, reviseResult.ErrorCode);
+        Assert.Equal(PlanningState.AwaitingApproval, reviseResult.State);
+        Assert.Equal(_mockBrain.CallCount, initialBrainCount); // Brain invoked = NO
+
+        // Version history intact (only v1 exists)
+        var versions = await _planningService.GetVersionsAsync(plan.ProjectId);
+        Assert.Single(versions);
+
+        // Existing plan unchanged in store
+        var storedPlan = await _planningService.GetPlanAsync(plan.ProjectId);
+        Assert.Equal(1, storedPlan!.Version);
+        Assert.Equal(PhaseStatus.Completed, storedPlan.Phases[0].Status);
+    }
+
+    // --- TEST 3 — PASSED TASK PROTECTION ---
+    [Fact]
+    public async Task RevisePlan_PassedTaskProtection_BlocksRevisionWithoutApproval()
+    {
+        var request = new PlanningRequest { ProjectName = "Passed Task Proj", Idea = "Initial Idea" };
+        var genResult = await _planningService.GeneratePlanAsync(request);
+        var plan = genResult.ProjectPlan!;
+        plan.Status = ProjectPlanStatus.Active;
+        plan.Phases[0].Status = PhaseStatus.Running;
+        plan.Phases[0].Tasks[0].Status = TaskPlanStatus.Passed;
+        await _store.SavePlanAsync(plan);
+
+        int initialBrainCount = _mockBrain.CallCount;
+
+        var reviseResult = await _planningService.RevisePlanAsync(plan.ProjectId, "Restructure task", allowProtectedHistoryRevision: false);
+
+        Assert.False(reviseResult.Success);
+        Assert.Equal(PlanningErrorCode.ApprovalRequired, reviseResult.ErrorCode);
+        Assert.Equal(_mockBrain.CallCount, initialBrainCount);
+
+        var storedPlan = await _planningService.GetPlanAsync(plan.ProjectId);
+        Assert.Equal(1, storedPlan!.Version);
+    }
+
+    // --- TEST 4 — EXPLICIT PROTECTED-HISTORY AUTHORIZATION ---
+    [Fact]
+    public async Task RevisePlan_ExplicitProtectedHistoryAuthorization_AllowsRevisionAndCreatesV2()
+    {
+        var request = new PlanningRequest { ProjectName = "Auth Proj", Idea = "Initial Idea" };
+        var genResult = await _planningService.GeneratePlanAsync(request);
+        var plan = genResult.ProjectPlan!;
+        plan.Status = ProjectPlanStatus.Active;
+        plan.Phases[0].Status = PhaseStatus.Completed;
+        await _store.SavePlanAsync(plan);
+
+        int initialBrainCount = _mockBrain.CallCount;
+
+        var reviseResult = await _planningService.RevisePlanAsync(plan.ProjectId, "Authorized restructuring", allowProtectedHistoryRevision: true);
+
+        Assert.True(reviseResult.Success);
+        Assert.True(_mockBrain.CallCount > initialBrainCount); // Brain invoked = YES
+        Assert.Equal(2, reviseResult.ProjectPlan!.Version);
+
+        // Verify v1 retained, v2 created
+        var loadedV1 = await _planningService.GetPlanVersionAsync(plan.ProjectId, 1);
+        var loadedV2 = await _planningService.GetPlanVersionAsync(plan.ProjectId, 2);
+
+        Assert.NotNull(loadedV1);
+        Assert.NotNull(loadedV2);
+        Assert.Equal(PhaseStatus.Completed, loadedV1.Phases[0].Status);
+        Assert.Equal(2, loadedV2.Version);
+    }
+
+    // --- TEST 5 — FULLAUTO DOES NOT BYPASS HISTORY GATE ---
+    [Fact]
+    public async Task RevisePlan_FullAutoMode_DoesNotBypassCompletedHistoryGate()
+    {
+        var request = new PlanningRequest
+        {
+            ProjectName = "FullAuto Proj",
+            Idea = "Initial Idea",
+            AutomationMode = AutomationMode.FullAuto
+        };
+        var genResult = await _planningService.GeneratePlanAsync(request);
+        var plan = genResult.ProjectPlan!;
+        plan.Status = ProjectPlanStatus.Active;
+        plan.Phases[0].Status = PhaseStatus.Completed;
+        await _store.SavePlanAsync(plan);
+
+        var reviseResult = await _planningService.RevisePlanAsync(plan.ProjectId, "Revision under FullAuto", allowProtectedHistoryRevision: false);
+
+        Assert.False(reviseResult.Success);
+        Assert.Equal(PlanningErrorCode.ApprovalRequired, reviseResult.ErrorCode);
+    }
+
     [Fact]
     public void CalculateProgress_DerivedFromActualPlanPhasesAndTasks()
     {

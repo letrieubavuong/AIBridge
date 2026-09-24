@@ -787,6 +787,7 @@ public class BridgeServer : IBridgeServer
         app.MapPost("/api/projects/{projectId}/plan/revise", async (string projectId, HttpContext context) =>
         {
             string revisionPrompt = string.Empty;
+            bool allowProtectedHistoryRevision = false;
             try
             {
                 using var doc = await JsonDocument.ParseAsync(context.Request.Body, cancellationToken: context.RequestAborted);
@@ -794,10 +795,14 @@ public class BridgeServer : IBridgeServer
                 {
                     revisionPrompt = prop.GetString() ?? string.Empty;
                 }
+                if (doc.RootElement.TryGetProperty("allowProtectedHistoryRevision", out var allowProp))
+                {
+                    allowProtectedHistoryRevision = allowProp.GetBoolean();
+                }
             }
             catch { }
 
-            var result = await _planningService.RevisePlanAsync(projectId, revisionPrompt, context.RequestAborted);
+            var result = await _planningService.RevisePlanAsync(projectId, revisionPrompt, allowProtectedHistoryRevision, context.RequestAborted);
             if (!result.Success && result.ErrorCode == PlanningErrorCode.PlanNotFound)
             {
                 return Results.Json(new ErrorResponse { Error = result.ErrorCode, Message = result.ErrorMessage ?? "Plan not found." }, statusCode: StatusCodes.Status404NotFound);

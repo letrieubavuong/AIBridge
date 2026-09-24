@@ -19,6 +19,8 @@ public class MockBrainProvider : IAIBrainProvider
         SupportsReview = true
     };
 
+    public int CallCount { get; private set; }
+
     public Task<bool> TestConnectionAsync(CancellationToken cancellationToken = default)
     {
         return Task.FromResult(true);
@@ -26,6 +28,7 @@ public class MockBrainProvider : IAIBrainProvider
 
     public async Task<BrainResponse> AnalyzeAsync(BrainRequest request, CancellationToken cancellationToken = default)
     {
+        CallCount++;
         var sw = Stopwatch.StartNew();
         await Task.Delay(50, cancellationToken); // Simulate minor processing latency
         sw.Stop();

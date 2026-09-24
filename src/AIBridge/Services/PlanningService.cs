@@ -77,7 +77,9 @@ public class PlanningService : IPlanningService
                 RequestType = BrainRequestType.Plan,
                 TaskPrompt = taskPrompt,
                 ProjectContext = $"Project Name: {projName}\nDetail Level: {request.RequestedDetailLevel}",
-                Constraints = request.Constraints.ToDictionary(c => $"Constraint_{Guid.NewGuid():N}", c => c)
+                Constraints = request.Constraints
+                    .Select((c, idx) => new { Key = $"Constraint_{idx + 1:D3}", Value = c })
+                    .ToDictionary(x => x.Key, x => x.Value)
             };
 
             // 2. Invoke IAIBrainService
@@ -167,7 +169,11 @@ public class PlanningService : IPlanningService
         }
     }
 
-    public async Task<PlanningResult> RevisePlanAsync(string projectId, string revisionPrompt, CancellationToken cancellationToken = default)
+    public async Task<PlanningResult> RevisePlanAsync(
+        string projectId,
+        string revisionPrompt,
+        bool allowProtectedHistoryRevision = false,
+        CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(projectId))
         {
@@ -195,11 +201,20 @@ public class PlanningService : IPlanningService
                 };
             }
 
-            // Completed work protection hook: In Phase 06, active plans with completed tasks require human approval before destructive changes
-            bool hasCompletedWork = currentPlan.Phases.Any(p => p.Status == PhaseStatus.Completed || p.Tasks.Any(t => t.Status == TaskPlanStatus.Passed));
-            if (currentPlan.Status == ProjectPlanStatus.Active && hasCompletedWork)
+            // Enforce completed-work protection: Active plans with completed phases or passed tasks require human approval before restructuring history
+            bool hasCompletedWork = currentPlan.Phases.Any(
+                p => p.Status == PhaseStatus.Completed || p.Tasks.Any(t => t.Status == TaskPlanStatus.Passed));
+
+            if (currentPlan.Status == ProjectPlanStatus.Active && hasCompletedWork && !allowProtectedHistoryRevision)
             {
-                // Protected history requirement
+                return new PlanningResult
+                {
+                    Success = false,
+                    State = PlanningState.AwaitingApproval,
+                    ProjectPlan = currentPlan,
+                    ErrorCode = PlanningErrorCode.ApprovalRequired,
+                    ErrorMessage = "The active plan contains completed work. Human approval is required before restructuring completed execution history."
+                };
             }
 
             string existingPlanJson = JsonSerializer.Serialize(currentPlan, _jsonOptions);
