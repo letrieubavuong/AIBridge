@@ -6,4 +6,6 @@ public class AppConfig
     public string WorkspacePath { get; set; } = string.Empty;
     public int BridgePort { get; set; } = 8787;
     public bool AutoStartBridge { get; set; } = false;
+    public int AntigravityTimeoutMinutes { get; set; } = 30;
+    public bool AutoApprovePermissions { get; set; } = false;
 }

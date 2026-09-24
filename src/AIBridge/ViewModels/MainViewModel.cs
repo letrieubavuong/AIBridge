@@ -1,6 +1,7 @@
 using System.Collections.ObjectModel;
 using System.IO;
 using System.Reflection;
+
 using System.Windows.Input;
 using AIBridge.Infrastructure;
 using AIBridge.Models;
@@ -35,7 +36,7 @@ public class MainViewModel : ObservableObject
         {
             var version = Assembly.GetExecutingAssembly().GetName().Version;
             var versionStr = version != null ? $"{version.Major}.{version.Minor}.{version.Build}" : "1.0.0";
-            return $"v{versionStr} (Phase 01)";
+            return $"v{versionStr} (Phase 02)";
         }
     }
 
@@ -164,10 +165,7 @@ public class MainViewModel : ObservableObject
 
         _logService.LogInfo("AIBridge Initialization Complete.");
 
-        if (!string.IsNullOrWhiteSpace(_antigravityPath))
-        {
-            _ = ExecuteTestAntigravityAsync();
-        }
+        _ = ExecuteTestAntigravityAsync();
 
         if (!string.IsNullOrWhiteSpace(_workspacePath))
         {
@@ -184,36 +182,35 @@ public class MainViewModel : ObservableObject
     {
         try
         {
+            var localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+            var agyBinDir = Path.Combine(localAppData, "agy", "bin");
+            var initialDir = Directory.Exists(agyBinDir) ? agyBinDir : localAppData;
+
             var dialog = new OpenFileDialog
             {
-                Title = "Select Antigravity Executable File",
+                Title = "Select Antigravity CLI Executable (agy.exe)",
                 Filter = "Executable files (*.exe;*.cmd;*.bat)|*.exe;*.cmd;*.bat|All files (*.*)|*.*",
+                InitialDirectory = initialDir,
                 CheckFileExists = true
             };
 
             if (dialog.ShowDialog() == true)
             {
                 AntigravityPath = dialog.FileName;
-                _logService.LogInfo($"Selected Antigravity executable path: {AntigravityPath}");
+                _logService.LogInfo($"Selected Antigravity CLI path: {AntigravityPath}");
                 _ = ExecuteTestAntigravityAsync();
             }
         }
         catch (Exception ex)
         {
-            _logService.LogError("Error browsing for Antigravity path", ex);
+            _logService.LogError("Error browsing for Antigravity CLI path", ex);
         }
     }
 
     private async Task ExecuteTestAntigravityAsync()
     {
-        if (string.IsNullOrWhiteSpace(AntigravityPath))
-        {
-            AntigravityStatus = "Unknown";
-            _logService.LogInfo("Antigravity path is not configured.");
-            return;
-        }
-
-        _logService.LogInfo("Starting Antigravity executable validation...");
+        _logService.LogInfo("Starting Antigravity CLI validation and health check...");
+        AntigravityStatus = "Checking...";
         var (isValid, message) = await _antigravityRunner.ValidateConfigurationAsync(AntigravityPath);
         AntigravityStatus = isValid ? "Ready" : "Not Found";
         _logService.LogInfo($"Antigravity status updated to: {AntigravityStatus} ({message})");
@@ -281,13 +278,13 @@ public class MainViewModel : ObservableObject
 
             var task = _taskService.CreateTask(PromptText, WorkspacePath);
 
-            _logService.LogInfo($"Submitting task {task.Id} for execution...");
+            _logService.LogInfo($"Submitting task {task.Id} for real execution via Antigravity CLI...");
 
             var result = await _taskService.SubmitTaskAsync(task, _antigravityRunner);
 
             if (!result.Success)
             {
-                _logService.LogWarning($"Task finish state notice: {result.ErrorMessage}");
+                _logService.LogWarning($"Task execution finish notice: {result.ErrorMessage}");
             }
         }
         catch (Exception ex)
