@@ -1,4 +1,6 @@
 using System.Collections.Generic;
+using System.Text.Json.Serialization;
+using AIBridge.Infrastructure;
 
 namespace AIBridge.Models;
 
@@ -24,5 +26,7 @@ public class AppConfig
     public string BrainEndpoint { get; set; } = string.Empty;
     public int BrainTimeoutSeconds { get; set; } = 120;
     public bool BrainEnabled { get; set; } = true;
-    public string AutomationMode { get; set; } = "Manual";
+
+    [JsonConverter(typeof(SafeAutomationModeConverter))]
+    public AutomationMode AutomationMode { get; set; } = AutomationMode.Manual;
 }

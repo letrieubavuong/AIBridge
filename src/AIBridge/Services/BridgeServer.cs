@@ -675,7 +675,7 @@ public class BridgeServer : IBridgeServer
                 timeoutSeconds = config.BrainTimeoutSeconds,
                 isAvailable = isAvailable,
                 isConfigured = isConfigured,
-                automationMode = config.AutomationMode,
+                automationMode = config.AutomationMode.ToString(),
                 state = _brainService.GetCurrentState().ToString(),
                 lastRequestType = lastRecord?.RequestType.ToString(),
                 lastDecision = lastRecord?.Decision.ToString(),
