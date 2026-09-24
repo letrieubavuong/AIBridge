@@ -664,13 +664,28 @@ public class MainViewModel : ObservableObject
             var headSha = await _gitCommandService.GetHeadShaAsync(repoRoot, gitExe) ?? string.Empty;
             var headShort = headSha.Length >= 7 ? headSha[..7] : headSha;
             var (_, _, isDirty) = await _gitCommandService.GetStatusAsync(repoRoot, gitExe);
-            var (ahead, _) = await _gitCommandService.GetAheadBehindAsync(repoRoot, gitEnv.Branch, gitEnv.RemoteName, gitExe);
+            var aheadBehind = await _gitCommandService.GetAheadBehindAsync(repoRoot, gitEnv.Branch, gitEnv.RemoteName, gitExe);
 
             RunOnUi(() =>
             {
                 GitHeadText = headShort;
                 GitWorkingTreeText = isDirty ? "DIRTY" : "CLEAN";
-                GitPushStateText = string.IsNullOrEmpty(gitEnv.RemoteName) ? "NOT CONFIG" : (ahead == 0 ? "PUSHED" : "NOT PUSHED");
+                if (string.IsNullOrEmpty(gitEnv.RemoteName))
+                {
+                    GitPushStateText = "NOT CONFIG";
+                }
+                else if (!aheadBehind.IsVerified)
+                {
+                    GitPushStateText = "UNKNOWN";
+                }
+                else if (aheadBehind.Ahead > 0)
+                {
+                    GitPushStateText = "NOT PUSHED";
+                }
+                else
+                {
+                    GitPushStateText = "PUSHED";
+                }
             });
         }
     }

@@ -517,9 +517,25 @@ public class BridgeServer : IBridgeServer
             var headShort = headSha.Length >= 7 ? headSha[..7] : headSha;
             var headMsg = await _gitCommandService.GetHeadMessageAsync(repoRoot, headSha, gitExe) ?? string.Empty;
             var (_, _, isDirty) = await _gitCommandService.GetStatusAsync(repoRoot, gitExe);
-            var (ahead, behind) = await _gitCommandService.GetAheadBehindAsync(repoRoot, gitEnv.Branch, gitEnv.RemoteName, gitExe);
+            var aheadBehind = await _gitCommandService.GetAheadBehindAsync(repoRoot, gitEnv.Branch, gitEnv.RemoteName, gitExe);
 
-            string pushState = string.IsNullOrEmpty(gitEnv.RemoteName) ? "NotConfigured" : (ahead == 0 ? "Pushed" : "NotPushed");
+            string pushState;
+            if (string.IsNullOrEmpty(gitEnv.RemoteName))
+            {
+                pushState = "NotConfigured";
+            }
+            else if (!aheadBehind.IsVerified)
+            {
+                pushState = "Unknown";
+            }
+            else if (aheadBehind.Ahead > 0)
+            {
+                pushState = "NotPushed";
+            }
+            else
+            {
+                pushState = "Pushed";
+            }
 
             var repoInfo = new GitRepositoryInfo
             {
@@ -532,8 +548,8 @@ public class BridgeServer : IBridgeServer
                 RemoteName = gitEnv.RemoteName,
                 RemoteUrlSafe = gitEnv.RemoteUrlSafe,
                 IsDirty = isDirty,
-                Ahead = ahead,
-                Behind = behind,
+                Ahead = aheadBehind.Ahead,
+                Behind = aheadBehind.Behind,
                 PushState = pushState
             };
 

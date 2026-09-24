@@ -16,6 +16,7 @@ public class GitSnapshot
     public bool IsDirty { get; set; }
     public List<string> ChangedFiles { get; set; } = new();
     public List<string> UntrackedFiles { get; set; } = new();
+    public bool AheadBehindVerified { get; set; }
     public int AheadCount { get; set; }
     public int BehindCount { get; set; }
     public DateTime CapturedAt { get; set; } = DateTime.Now;

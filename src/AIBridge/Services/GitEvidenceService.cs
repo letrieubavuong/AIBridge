@@ -58,7 +58,7 @@ public class GitEvidenceService : IGitEvidenceService
         var (changed, untracked, isDirty) = await _cmdService.GetStatusAsync(repoRoot, gitExe, cancellationToken);
         var (remoteName, remoteUrlSafe) = (envInfo.RemoteName, envInfo.RemoteUrlSafe);
 
-        var (ahead, behind) = await _cmdService.GetAheadBehindAsync(repoRoot, branch, remoteName, gitExe, cancellationToken);
+        var aheadBehind = await _cmdService.GetAheadBehindAsync(repoRoot, branch, remoteName, gitExe, cancellationToken);
 
         return new GitSnapshot
         {
@@ -73,8 +73,9 @@ public class GitEvidenceService : IGitEvidenceService
             IsDirty = isDirty,
             ChangedFiles = changed,
             UntrackedFiles = untracked,
-            AheadCount = ahead,
-            BehindCount = behind,
+            AheadBehindVerified = aheadBehind.IsVerified,
+            AheadCount = aheadBehind.Ahead,
+            BehindCount = aheadBehind.Behind,
             CapturedAt = DateTime.Now
         };
     }
@@ -171,27 +172,33 @@ public class GitEvidenceService : IGitEvidenceService
 
             // Diff calculation & bounding
             string? rawDiff = null;
+            bool diffTruncated = false;
+
             if (evidence.NewCommitDetected)
             {
-                rawDiff = await _cmdService.GetDiffAsync(repoRoot, beforeSnapshot.HeadSha, afterSnapshot.HeadSha, gitExe, MaxDiffBytes, cancellationToken);
+                var (diffResult, truncated) = await _cmdService.GetDiffAsync(repoRoot, beforeSnapshot.HeadSha, afterSnapshot.HeadSha, gitExe, MaxDiffBytes, cancellationToken);
+                rawDiff = diffResult;
+                diffTruncated = truncated;
             }
 
             // If no commit diff or additional uncommitted diff exists
             if (string.IsNullOrWhiteSpace(rawDiff) && afterSnapshot.IsDirty)
             {
-                rawDiff = await _cmdService.GetWorkingTreeDiffAsync(repoRoot, gitExe, MaxDiffBytes, cancellationToken);
+                var (diffResult, truncated) = await _cmdService.GetWorkingTreeDiffAsync(repoRoot, gitExe, MaxDiffBytes, cancellationToken);
+                rawDiff = diffResult;
+                diffTruncated |= truncated;
             }
 
             if (!string.IsNullOrEmpty(rawDiff))
             {
-                if (Encoding.UTF8.GetByteCount(rawDiff) > MaxDiffBytes || rawDiff.Length > MaxDiffBytes)
+                if (diffTruncated && !rawDiff.EndsWith("[DIFF TRUNCATED - EXCEEDED 256 KB LIMIT]"))
                 {
-                    rawDiff = rawDiff.Substring(0, Math.Min(rawDiff.Length, MaxDiffBytes)) + "\n\n... [DIFF TRUNCATED - EXCEEDED 256 KB LIMIT]";
-                    evidence.DiffTruncated = true;
+                    rawDiff += "\n\n... [DIFF TRUNCATED - EXCEEDED 256 KB LIMIT]";
                 }
 
                 var (redactedDiff, containsRedactions) = SecretRedactor.Redact(rawDiff);
                 evidence.Diff = redactedDiff;
+                evidence.DiffTruncated = diffTruncated;
                 evidence.ContainsRedactions = containsRedactions;
             }
 
@@ -200,13 +207,17 @@ public class GitEvidenceService : IGitEvidenceService
             {
                 evidence.PushState = "NotConfigured";
             }
-            else if (afterSnapshot.AheadCount == 0)
+            else if (!afterSnapshot.AheadBehindVerified)
             {
-                evidence.PushState = "Pushed";
+                evidence.PushState = "Unknown";
+            }
+            else if (afterSnapshot.AheadCount > 0)
+            {
+                evidence.PushState = "NotPushed";
             }
             else
             {
-                evidence.PushState = "NotPushed";
+                evidence.PushState = "Pushed";
             }
         }
 
@@ -252,10 +263,10 @@ public class GitEvidenceService : IGitEvidenceService
         }
 
         // Check if there are commits to push
-        var (ahead, _) = await _cmdService.GetAheadBehindAsync(repoRoot, branch, envInfo.RemoteName, gitExe, cancellationToken);
-        if (ahead == 0)
+        var aheadBehind = await _cmdService.GetAheadBehindAsync(repoRoot, branch, envInfo.RemoteName, gitExe, cancellationToken);
+        if (!aheadBehind.IsVerified || aheadBehind.Ahead == 0)
         {
-            return (false, "NO_COMMIT_TO_PUSH", "Local branch has no unpushed commits.");
+            return (false, "NO_COMMIT_TO_PUSH", "Local branch has no unpushed commits or remote reference could not be resolved.");
         }
 
         _logService.LogInfo($"Executing safe git push {envInfo.RemoteName} {branch}...");
