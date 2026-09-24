@@ -1,0 +1,202 @@
+<Window x:Class="AIBridge.Views.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:viewmodels="clr-namespace:AIBridge.ViewModels"
+        mc:Ignorable="d"
+        Title="AIBridge — Desktop Foundation" 
+        Height="780" Width="1080"
+        MinHeight="600" MinWidth="850"
+        WindowStartupLocation="CenterScreen"
+        Background="{StaticResource BgBrush}">
+
+    <Grid Margin="16">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <!-- Header / Bridge Status -->
+            <RowDefinition Height="Auto" />
+            <!-- Configurations (Antigravity + Workspace) -->
+            <RowDefinition Height="*" />
+            <!-- Main Content (Prompt + Current Task + Logs) -->
+        </Grid.RowDefinitions>
+
+        <!-- 1. Header & Bridge Status -->
+        <Border Grid.Row="0" Background="{StaticResource CardBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="6" Padding="16,12" Margin="0,0,0,12">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+
+                <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
+                    <TextBlock Text="AIBridge" FontSize="20" FontWeight="Bold" Foreground="{StaticResource PrimaryBrush}" VerticalAlignment="Center"/>
+                    <TextBlock Text="— Phase 01 Desktop Foundation" FontSize="14" Foreground="{StaticResource SubTextBrush}" VerticalAlignment="Center" Margin="10,2,0,0"/>
+                </StackPanel>
+
+                <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                    <Border Background="#1E1E2E" Padding="10,4" CornerRadius="4" Margin="0,0,8,0">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="Bridge Status: " Foreground="{StaticResource SubTextBrush}" />
+                            <TextBlock Text="{Binding BridgeStatusText}" Foreground="{StaticResource AccentBrush}" FontWeight="SemiBold" />
+                        </StackPanel>
+                    </Border>
+                    <Border Background="#1E1E2E" Padding="10,4" CornerRadius="4" Margin="0,0,8,0">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="Port: " Foreground="{StaticResource SubTextBrush}" />
+                            <TextBlock Text="{Binding BridgePort}" Foreground="{StaticResource TextBrush}" FontWeight="SemiBold" />
+                        </StackPanel>
+                    </Border>
+                    <Border Background="#1E1E2E" Padding="10,4" CornerRadius="4">
+                        <TextBlock Text="{Binding AppVersionText}" Foreground="{StaticResource SubTextBrush}" FontSize="12" />
+                    </Border>
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <!-- 2. Configurations (Antigravity & Workspace) -->
+        <Grid Grid.Row="1" Margin="0,0,0,12">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="12" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+
+            <!-- Antigravity Config -->
+            <Border Grid.Column="0" Background="{StaticResource CardBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="6" Padding="14">
+                <StackPanel>
+                    <Grid Margin="0,0,0,8">
+                        <TextBlock Text="ANTIGRAVITY AGENT CONFIGURATION" FontWeight="SemiBold" Foreground="{StaticResource PrimaryBrush}" FontSize="12"/>
+                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                            <TextBlock Text="Status: " Foreground="{StaticResource SubTextBrush}" FontSize="12"/>
+                            <TextBlock Text="{Binding AntigravityStatus}" FontWeight="Bold" FontSize="12" Foreground="{StaticResource TextBrush}"/>
+                        </StackPanel>
+                    </Grid>
+                    <Grid Margin="0,0,0,8">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <TextBox Grid.Column="0" Text="{Binding AntigravityPath, UpdateSourceTrigger=PropertyChanged}" ToolTip="Executable or agent path" Margin="0,0,6,0"/>
+                        <Button Grid.Column="1" Content="Browse" Command="{Binding BrowseAntigravityCommand}" Margin="0,0,6,0"/>
+                        <Button Grid.Column="2" Content="Test" Command="{Binding TestAntigravityCommand}"/>
+                    </Grid>
+                </StackPanel>
+            </Border>
+
+            <!-- Workspace Config -->
+            <Border Grid.Column="2" Background="{StaticResource CardBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="6" Padding="14">
+                <StackPanel>
+                    <Grid Margin="0,0,0,8">
+                        <TextBlock Text="TARGET WORKSPACE CONFIGURATION" FontWeight="SemiBold" Foreground="{StaticResource PrimaryBrush}" FontSize="12"/>
+                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                            <TextBlock Text="Status: " Foreground="{StaticResource SubTextBrush}" FontSize="12"/>
+                            <TextBlock Text="{Binding WorkspaceStatus}" FontWeight="Bold" FontSize="12" Foreground="{StaticResource TextBrush}"/>
+                        </StackPanel>
+                    </Grid>
+                    <Grid Margin="0,0,0,8">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <TextBox Grid.Column="0" Text="{Binding WorkspacePath, UpdateSourceTrigger=PropertyChanged}" ToolTip="Workspace directory path" Margin="0,0,6,0"/>
+                        <Button Grid.Column="1" Content="Browse Folder" Command="{Binding BrowseWorkspaceCommand}" Margin="0,0,6,0"/>
+                        <Button Grid.Column="2" Content="Validate" Command="{Binding ValidateWorkspaceCommand}"/>
+                    </Grid>
+                </StackPanel>
+            </Border>
+        </Grid>
+
+        <!-- 3. Main Workspace Area (Prompt, Task, Actions, Logs) -->
+        <Grid Grid.Row="2">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="6*" />
+                <ColumnDefinition Width="12" />
+                <ColumnDefinition Width="4*" />
+            </Grid.ColumnDefinitions>
+
+            <!-- Left Column: Prompt & Actions -->
+            <Grid Grid.Column="0">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
+
+                <TextBlock Grid.Row="0" Text="PROMPT SPECIFICATION" FontWeight="SemiBold" Foreground="{StaticResource SubTextBrush}" Margin="0,0,0,6"/>
+                
+                <TextBox Grid.Row="1" 
+                         Text="{Binding PromptText, UpdateSourceTrigger=PropertyChanged}"
+                         AcceptsReturn="True" 
+                         TextWrapping="Wrap" 
+                         VerticalScrollBarVisibility="Auto"
+                         Padding="10"
+                         Margin="0,0,0,10"
+                         ToolTip="Enter prompt instructions for coding agent..."/>
+
+                <!-- Action Buttons -->
+                <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right">
+                    <Button Content="HỦY" Command="{Binding CancelTaskCommand}" Background="#FF5555" Foreground="White" Width="100" Margin="0,0,10,0"/>
+                    <Button Content="GIAO VIỆC" Command="{Binding SubmitTaskCommand}" Background="{StaticResource AccentBrush}" Foreground="#1E1E2E" FontWeight="Bold" Width="130"/>
+                </StackPanel>
+            </Grid>
+
+            <!-- Right Column: Current Task & Logs -->
+            <Grid Grid.Column="2">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                </Grid.RowDefinitions>
+
+                <!-- Current Task Info -->
+                <Border Grid.Row="0" Background="{StaticResource CardBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="6" Padding="12" Margin="0,0,0,10">
+                    <StackPanel>
+                        <TextBlock Text="CURRENT TASK" FontWeight="SemiBold" Foreground="{StaticResource PrimaryBrush}" FontSize="12" Margin="0,0,0,8"/>
+                        
+                        <Grid Margin="0,2">
+                            <TextBlock Text="Task ID:" Foreground="{StaticResource SubTextBrush}" FontSize="12"/>
+                            <TextBlock Text="{Binding CurrentTaskId}" HorizontalAlignment="Right" FontSize="12" FontFamily="Consolas"/>
+                        </Grid>
+                        
+                        <Grid Margin="0,2">
+                            <TextBlock Text="Status:" Foreground="{StaticResource SubTextBrush}" FontSize="12"/>
+                            <TextBlock Text="{Binding CurrentTaskStatusText}" HorizontalAlignment="Right" FontWeight="SemiBold" FontSize="12"/>
+                        </Grid>
+
+                        <Grid Margin="0,2">
+                            <TextBlock Text="Started:" Foreground="{StaticResource SubTextBrush}" FontSize="12"/>
+                            <TextBlock Text="{Binding CurrentTaskStarted}" HorizontalAlignment="Right" FontSize="12"/>
+                        </Grid>
+
+                        <Grid Margin="0,2">
+                            <TextBlock Text="Completed:" Foreground="{StaticResource SubTextBrush}" FontSize="12"/>
+                            <TextBlock Text="{Binding CurrentTaskCompleted}" HorizontalAlignment="Right" FontSize="12"/>
+                        </Grid>
+                    </StackPanel>
+                </Border>
+
+                <TextBlock Grid.Row="1" Text="APPLICATION LOGS" FontWeight="SemiBold" Foreground="{StaticResource SubTextBrush}" Margin="0,0,0,6"/>
+
+                <!-- Log Output Box -->
+                <Border Grid.Row="2" Background="{StaticResource InputBgBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="4" Padding="6">
+                    <ListBox ItemsSource="{Binding LogEntries}" 
+                             Background="Transparent" 
+                             BorderThickness="0" 
+                             ScrollViewer.HorizontalScrollBarVisibility="Auto"
+                             ScrollViewer.VerticalScrollBarVisibility="Auto"
+                             FontFamily="Consolas" 
+                             FontSize="11">
+                        <ListBox.ItemTemplate>
+                            <DataTemplate>
+                                <TextBlock Text="{Binding FormattedText}" Foreground="{StaticResource TextBrush}" Margin="0,1"/>
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
+                </Border>
+            </Grid>
+        </Grid>
+    </Grid>
+</Window>

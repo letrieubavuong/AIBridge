@@ -1,0 +1,21 @@
+## .NET / C# Build Outputs
+[Bb]in/
+[Oo]bj/
+[Ll]og/
+[Ll]ogs/
+publish/
+
+## Visual Studio & IDEs
+.vs/
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+*.userprefs
+.idea/
+.vscode/
+
+## Local App Data / User Settings
+config.json
+local.settings.json
+*.local
