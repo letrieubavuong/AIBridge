@@ -24,6 +24,7 @@ public class MainViewModel : ObservableObject
     private readonly ITaskRegistry _taskRegistry;
     private readonly IAIBrainService _brainService;
     private readonly IAIBrainProviderRegistry _brainProviderRegistry;
+    private readonly IPlanningService _planningService;
 
     private AppConfig _config = new();
     private string _antigravityPath = string.Empty;
@@ -399,6 +400,87 @@ public class MainViewModel : ObservableObject
     public ICommand TestBrainCommand { get; }
     public ICommand ViewLastBrainResponseCommand { get; }
 
+    // --- PHASE 06 PLANNING PROPERTIES ---
+    private string _planningIdeaText = "Build a student management application.";
+    private string _planningProjectNameText = "Student Manager App";
+    private ProjectPlan? _currentProjectPlan;
+    private string _planningStatusText = "Idle";
+    private bool _isPlanningInProgress;
+    private string _selectedNodeDetailsText = "Select a Phase or Task from the Plan Tree to inspect details.";
+    private string _planVersionDisplay = "v1 (Draft)";
+    private PlanVersion? _selectedPlanVersion;
+
+    public string PlanningIdeaText
+    {
+        get => _planningIdeaText;
+        set => SetProperty(ref _planningIdeaText, value);
+    }
+
+    public string PlanningProjectNameText
+    {
+        get => _planningProjectNameText;
+        set => SetProperty(ref _planningProjectNameText, value);
+    }
+
+    public ProjectPlan? CurrentProjectPlan
+    {
+        get => _currentProjectPlan;
+        set
+        {
+            if (SetProperty(ref _currentProjectPlan, value))
+            {
+                UpdateProgressFromPlan(value);
+                OnPropertyChanged(nameof(HasPlanAvailable));
+                OnPropertyChanged(nameof(IsPlanApprovable));
+            }
+        }
+    }
+
+    public bool HasPlanAvailable => CurrentProjectPlan != null;
+    public bool IsPlanApprovable => CurrentProjectPlan != null && CurrentProjectPlan.Status != ProjectPlanStatus.Approved;
+
+    public string PlanningStatusText
+    {
+        get => _planningStatusText;
+        set => SetProperty(ref _planningStatusText, value);
+    }
+
+    public bool IsPlanningInProgress
+    {
+        get => _isPlanningInProgress;
+        set => SetProperty(ref _isPlanningInProgress, value);
+    }
+
+    public string SelectedNodeDetailsText
+    {
+        get => _selectedNodeDetailsText;
+        set => SetProperty(ref _selectedNodeDetailsText, value);
+    }
+
+    public string PlanVersionDisplay
+    {
+        get => _planVersionDisplay;
+        set => SetProperty(ref _planVersionDisplay, value);
+    }
+
+    public ObservableCollection<PlanVersion> AvailablePlanVersions { get; } = new();
+
+    public PlanVersion? SelectedPlanVersion
+    {
+        get => _selectedPlanVersion;
+        set
+        {
+            if (SetProperty(ref _selectedPlanVersion, value) && value != null && CurrentProjectPlan != null)
+            {
+                _ = LoadPlanVersionAsync(CurrentProjectPlan.ProjectId, value.VersionNumber);
+            }
+        }
+    }
+
+    public ICommand GeneratePlanCommand { get; }
+    public ICommand ApprovePlanCommand { get; }
+    public ICommand RevisePlanCommand { get; }
+
     public MainViewModel(
         IConfigService configService,
         ILogService logService,
@@ -411,7 +493,8 @@ public class MainViewModel : ObservableObject
         IGitEvidenceService? gitEvidenceService = null,
         ITaskRegistry? taskRegistry = null,
         IAIBrainService? brainService = null,
-        IAIBrainProviderRegistry? brainProviderRegistry = null)
+        IAIBrainProviderRegistry? brainProviderRegistry = null,
+        IPlanningService? planningService = null)
     {
         _configService = configService ?? throw new ArgumentNullException(nameof(configService));
         _logService = logService ?? throw new ArgumentNullException(nameof(logService));
@@ -437,6 +520,7 @@ public class MainViewModel : ObservableObject
         }
 
         _brainService = brainService ?? new AIBrainService(_logService, _configService, _brainProviderRegistry);
+        _planningService = planningService ?? new PlanningService(_brainService, new PlanValidator(), new FileProjectPlanStore());
 
         BrowseAntigravityCommand = new RelayCommand(ExecuteBrowseAntigravity);
         TestAntigravityCommand = new AsyncRelayCommand(ExecuteTestAntigravityAsync);
@@ -460,6 +544,10 @@ public class MainViewModel : ObservableObject
 
         TestBrainCommand = new AsyncRelayCommand(ExecuteTestBrainAsync);
         ViewLastBrainResponseCommand = new RelayCommand(ExecuteViewLastBrainResponse);
+
+        GeneratePlanCommand = new AsyncRelayCommand(ExecuteGeneratePlanAsync);
+        ApprovePlanCommand = new AsyncRelayCommand(ExecuteApprovePlanAsync);
+        RevisePlanCommand = new AsyncRelayCommand(ExecuteRevisePlanAsync);
 
         _taskService.CurrentTaskChanged += OnCurrentTaskChanged;
         _taskService.TaskUpdated += OnTaskUpdated;
@@ -1107,6 +1195,195 @@ public class MainViewModel : ObservableObject
         else
         {
             action();
+        }
+    }
+
+    // --- PHASE 06 PLANNING METHODS ---
+
+    private async Task ExecuteGeneratePlanAsync()
+    {
+        if (string.IsNullOrWhiteSpace(PlanningIdeaText))
+        {
+            MessageBox.Show("Please enter an Idea or Requirement for planning.", "Validation", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+
+        IsPlanningInProgress = true;
+        PlanningStatusText = "Generating Plan with AI Brain...";
+        _logService.LogInfo($"Starting AI Plan generation for: '{PlanningProjectNameText}'...");
+
+        try
+        {
+            var req = new PlanningRequest
+            {
+                ProjectName = PlanningProjectNameText,
+                Idea = PlanningIdeaText,
+                Goal = PlanningIdeaText,
+                AutomationMode = _config.AutomationMode
+            };
+
+            var result = await _planningService.GeneratePlanAsync(req);
+            if (result.Success && result.ProjectPlan != null)
+            {
+                RunOnUi(() =>
+                {
+                    CurrentProjectPlan = result.ProjectPlan;
+                    PlanningStatusText = $"Plan v{result.ProjectPlan.Version} Generated - Awaiting Approval";
+                    PlanVersionDisplay = $"v{result.ProjectPlan.Version} ({result.ProjectPlan.Status})";
+                });
+                _logService.LogInfo($"Plan v{result.ProjectPlan.Version} successfully created with {result.ProjectPlan.Phases.Count} phases.");
+                await RefreshPlanVersionsAsync(result.ProjectPlan.ProjectId);
+            }
+            else
+            {
+                RunOnUi(() => PlanningStatusText = $"Planning Failed: {result.ErrorMessage}");
+                _logService.LogError($"Plan generation failed: {result.ErrorMessage}");
+                MessageBox.Show($"Failed to generate plan: {result.ErrorMessage}", "Planning Error", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+        }
+        catch (Exception ex)
+        {
+            RunOnUi(() => PlanningStatusText = "Error generating plan");
+            _logService.LogError("Error in ExecuteGeneratePlanAsync", ex);
+        }
+        finally
+        {
+            IsPlanningInProgress = false;
+        }
+    }
+
+    private async Task ExecuteApprovePlanAsync()
+    {
+        if (CurrentProjectPlan == null) return;
+
+        IsPlanningInProgress = true;
+        PlanningStatusText = "Approving Plan...";
+
+        try
+        {
+            var result = await _planningService.ApprovePlanAsync(CurrentProjectPlan.ProjectId, "Approved via WPF Planning Panel");
+            if (result.Success && result.ProjectPlan != null)
+            {
+                RunOnUi(() =>
+                {
+                    CurrentProjectPlan = result.ProjectPlan;
+                    PlanningStatusText = "Plan APPROVED (Phase 06 Human Gate Passed - 0 tasks executed)";
+                    PlanVersionDisplay = $"v{result.ProjectPlan.Version} (Approved)";
+                });
+                _logService.LogInfo($"Project plan '{CurrentProjectPlan.ProjectId}' APPROVED explicitly by human operator.");
+            }
+            else
+            {
+                RunOnUi(() => PlanningStatusText = $"Approval Failed: {result.ErrorMessage}");
+                _logService.LogError($"Failed to approve plan: {result.ErrorMessage}");
+            }
+        }
+        finally
+        {
+            IsPlanningInProgress = false;
+        }
+    }
+
+    private async Task ExecuteRevisePlanAsync()
+    {
+        if (CurrentProjectPlan == null) return;
+
+        IsPlanningInProgress = true;
+        PlanningStatusText = "Revising Plan with AI...";
+
+        try
+        {
+            var result = await _planningService.RevisePlanAsync(CurrentProjectPlan.ProjectId, PlanningIdeaText);
+            if (result.Success && result.ProjectPlan != null)
+            {
+                RunOnUi(() =>
+                {
+                    CurrentProjectPlan = result.ProjectPlan;
+                    PlanningStatusText = $"Plan Revised to v{result.ProjectPlan.Version} - Awaiting Approval";
+                    PlanVersionDisplay = $"v{result.ProjectPlan.Version} ({result.ProjectPlan.Status})";
+                });
+                _logService.LogInfo($"Project plan revised to v{result.ProjectPlan.Version}.");
+                await RefreshPlanVersionsAsync(result.ProjectPlan.ProjectId);
+            }
+            else
+            {
+                RunOnUi(() => PlanningStatusText = $"Revision Failed: {result.ErrorMessage}");
+                _logService.LogError($"Failed to revise plan: {result.ErrorMessage}");
+            }
+        }
+        finally
+        {
+            IsPlanningInProgress = false;
+        }
+    }
+
+    public void SelectNodeDetails(object node)
+    {
+        if (node is PhasePlan phase)
+        {
+            SelectedNodeDetailsText = $"PHASE {phase.PhaseNumber:D2}: {phase.Name}\n" +
+                                     $"Status: {phase.Status}\n" +
+                                     $"Objective: {phase.Objective}\n" +
+                                     $"Weight: {phase.Weight}\n" +
+                                     $"Tasks Count: {phase.Tasks.Count}\n" +
+                                     $"Dependencies: {(phase.Dependencies.Count > 0 ? string.Join(", ", phase.Dependencies) : "None")}\n" +
+                                     $"Acceptance Criteria:\n - {string.Join("\n - ", phase.AcceptanceCriteria)}";
+        }
+        else if (node is TaskPlan task)
+        {
+            SelectedNodeDetailsText = $"TASK {task.TaskId}: {task.Title}\n" +
+                                     $"Status: {task.Status}\n" +
+                                     $"Objective: {task.Objective}\n" +
+                                     $"Estimated Complexity: {task.EstimatedComplexity}\n" +
+                                     $"Max Retries: {task.MaxRetries} (Current: {task.RetryCount})\n" +
+                                     $"Requires Human Gate: {task.RequiresHumanApproval}\n" +
+                                     $"Dependencies: {(task.Dependencies.Count > 0 ? string.Join(", ", task.Dependencies) : "None")}\n" +
+                                     $"Acceptance Criteria:\n - {string.Join("\n - ", task.AcceptanceCriteria)}";
+        }
+    }
+
+    private void UpdateProgressFromPlan(ProjectPlan? plan)
+    {
+        if (plan == null) return;
+
+        var projProgress = _planningService.CalculateProjectProgress(plan);
+        ProjectPercent = projProgress.PercentComplete;
+        ProjectProgressText = $"Phase {projProgress.CurrentPhaseNumber:D2} / {projProgress.TotalPhases} {plan.Name} ({projProgress.CompletedPhases} completed)";
+
+        var currentPhasePlan = plan.Phases.FirstOrDefault(p => p.PhaseNumber == projProgress.CurrentPhaseNumber)
+                               ?? plan.Phases.FirstOrDefault();
+
+        if (currentPhasePlan != null)
+        {
+            var phaseProg = _planningService.CalculatePhaseProgress(currentPhasePlan);
+            PhasePercent = phaseProg.PercentComplete;
+            PhaseProgressText = $"{phaseProg.CompletedTasks} / {phaseProg.TotalTasks} tasks passed | Current Task: {phaseProg.CurrentTaskId} | Status: {phaseProg.Status}";
+        }
+    }
+
+    private async Task RefreshPlanVersionsAsync(string projectId)
+    {
+        var versions = await _planningService.GetVersionsAsync(projectId);
+        RunOnUi(() =>
+        {
+            AvailablePlanVersions.Clear();
+            foreach (var v in versions)
+            {
+                AvailablePlanVersions.Add(v);
+            }
+        });
+    }
+
+    private async Task LoadPlanVersionAsync(string projectId, int version)
+    {
+        var plan = await _planningService.GetPlanVersionAsync(projectId, version);
+        if (plan != null)
+        {
+            RunOnUi(() =>
+            {
+                CurrentProjectPlan = plan;
+                PlanVersionDisplay = $"v{plan.Version} ({plan.Status})";
+            });
         }
     }
 }

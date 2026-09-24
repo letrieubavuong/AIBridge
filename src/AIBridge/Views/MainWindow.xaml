@@ -351,94 +351,212 @@
             </Border>
         </Grid>
 
-        <!-- 4. Main Workspace Area (Prompt, Task, Actions, Logs) -->
-        <Grid Grid.Row="4">
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="6*" />
-                <ColumnDefinition Width="12" />
-                <ColumnDefinition Width="4*" />
-            </Grid.ColumnDefinitions>
+        <!-- 4. Main Tabbed Workspace Area (Phase 06 Planning & Phase 01-05 Execution) -->
+        <TabControl Grid.Row="4" Background="Transparent" BorderThickness="0">
+            <!-- TAB 1: AI PLANNING (PHASE 06) -->
+            <TabItem Header="PROJECT PLANNING (PHASE 06)" FontSize="12" FontWeight="Bold">
+                <Grid Margin="0,10,0,0">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                    </Grid.RowDefinitions>
 
-            <!-- Left Column: Prompt & Actions -->
-            <Grid Grid.Column="0">
-                <Grid.RowDefinitions>
-                    <RowDefinition Height="Auto" />
-                    <RowDefinition Height="*" />
-                    <RowDefinition Height="Auto" />
-                </Grid.RowDefinitions>
+                    <!-- Planning Input Controls -->
+                    <Border Grid.Row="0" Background="{StaticResource CardBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="6" Padding="12" Margin="0,0,0,8">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="2*" />
+                                <ColumnDefinition Width="5*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
 
-                <TextBlock Grid.Row="0" Text="PROMPT SPECIFICATION" FontWeight="SemiBold" Foreground="{StaticResource SubTextBrush}" Margin="0,0,0,6"/>
-                
-                <TextBox Grid.Row="1" 
-                         Text="{Binding PromptText, UpdateSourceTrigger=PropertyChanged}"
-                         AcceptsReturn="True" 
-                         TextWrapping="Wrap" 
-                         VerticalScrollBarVisibility="Auto"
-                         Padding="10"
-                         Margin="0,0,0,10"
-                         ToolTip="Enter prompt instructions for coding agent..."/>
+                            <StackPanel Grid.Column="0" Margin="0,0,10,0">
+                                <TextBlock Text="PROJECT NAME" FontWeight="SemiBold" Foreground="{StaticResource SubTextBrush}" FontSize="11" Margin="0,0,0,4"/>
+                                <TextBox Text="{Binding PlanningProjectNameText, UpdateSourceTrigger=PropertyChanged}" Padding="6"/>
+                            </StackPanel>
 
-                <!-- Action Buttons -->
-                <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right">
-                    <Button Content="HỦY" Command="{Binding CancelTaskCommand}" Background="#FF5555" Foreground="White" Width="100" Margin="0,0,10,0"/>
-                    <Button Content="GIAO VIỆC" Command="{Binding SubmitTaskCommand}" Background="{StaticResource AccentBrush}" Foreground="#1E1E2E" FontWeight="Bold" Width="130"/>
-                </StackPanel>
-            </Grid>
+                            <StackPanel Grid.Column="1" Margin="0,0,10,0">
+                                <TextBlock Text="USER IDEA / PROJECT REQUIREMENT" FontWeight="SemiBold" Foreground="{StaticResource SubTextBrush}" FontSize="11" Margin="0,0,0,4"/>
+                                <TextBox Text="{Binding PlanningIdeaText, UpdateSourceTrigger=PropertyChanged}" Padding="6" ToolTip="Enter high-level user idea or application requirement..."/>
+                            </StackPanel>
 
-            <!-- Right Column: Current Task & Logs -->
-            <Grid Grid.Column="2">
-                <Grid.RowDefinitions>
-                    <RowDefinition Height="Auto" />
-                    <RowDefinition Height="Auto" />
-                    <RowDefinition Height="*" />
-                </Grid.RowDefinitions>
+                            <Button Grid.Column="2" Content="GENERATE PLAN" Command="{Binding GeneratePlanCommand}" IsEnabled="{Binding IsPlanningInProgress, Converter={StaticResource InverseBool}}" Background="{StaticResource PrimaryBrush}" Foreground="#1E1E2E" FontWeight="Bold" Padding="16,0" VerticalAlignment="Bottom" Height="32"/>
+                        </Grid>
+                    </Border>
 
-                <!-- Current Task Info -->
-                <Border Grid.Row="0" Background="{StaticResource CardBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="6" Padding="12" Margin="0,0,0,10">
-                    <StackPanel>
-                        <TextBlock Text="CURRENT TASK" FontWeight="SemiBold" Foreground="{StaticResource PrimaryBrush}" FontSize="12" Margin="0,0,0,8"/>
+                    <!-- Plan Header & Action Controls -->
+                    <Border Grid.Row="1" Background="{StaticResource CardBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="6" Padding="12,8" Margin="0,0,0,8">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+
+                            <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
+                                <TextBlock Text="PLAN VERSION:" FontWeight="Bold" Foreground="{StaticResource SubTextBrush}" FontSize="11" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                                <TextBlock Text="{Binding PlanVersionDisplay}" FontWeight="Bold" Foreground="{StaticResource PrimaryBrush}" FontSize="12" VerticalAlignment="Center" Margin="0,0,16,0"/>
+
+                                <TextBlock Text="STATUS:" FontWeight="Bold" Foreground="{StaticResource SubTextBrush}" FontSize="11" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                                <TextBlock Text="{Binding PlanningStatusText}" FontWeight="SemiBold" Foreground="{StaticResource AccentBrush}" FontSize="11" VerticalAlignment="Center"/>
+                            </StackPanel>
+
+                            <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
+                                <Button Content="REVISE WITH AI" Command="{Binding RevisePlanCommand}" IsEnabled="{Binding HasPlanAvailable}" Padding="10,4" Margin="0,0,8,0" FontSize="11"/>
+                                <Button Content="APPROVE PLAN" Command="{Binding ApprovePlanCommand}" IsEnabled="{Binding IsPlanApprovable}" Background="{StaticResource AccentBrush}" Foreground="#1E1E2E" FontWeight="Bold" Padding="14,4" FontSize="11"/>
+                            </StackPanel>
+                        </Grid>
+                    </Border>
+
+                    <!-- Plan Tree & Details Split View -->
+                    <Grid Grid.Row="2">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="5*" />
+                            <ColumnDefinition Width="10" />
+                            <ColumnDefinition Width="5*" />
+                        </Grid.ColumnDefinitions>
+
+                        <!-- Left: Hierarchical Plan Tree -->
+                        <Border Grid.Column="0" Background="{StaticResource InputBgBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="6" Padding="8">
+                            <Grid>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="*"/>
+                                </Grid.RowDefinitions>
+                                <TextBlock Grid.Row="0" Text="PROJECT PLAN TREE (PHASES &amp; TASKS)" FontWeight="Bold" Foreground="{StaticResource SubTextBrush}" FontSize="11" Margin="0,0,0,6"/>
+                                <TreeView Grid.Row="1" ItemsSource="{Binding CurrentProjectPlan.Phases}" 
+                                          SelectedItemChanged="TreeView_SelectedItemChanged"
+                                          Background="Transparent" BorderThickness="0">
+                                    <TreeView.ItemTemplate>
+                                        <HierarchicalDataTemplate ItemsSource="{Binding Tasks}">
+                                            <StackPanel Orientation="Horizontal" Margin="0,2">
+                                                <TextBlock Text="{Binding PhaseId}" Foreground="{StaticResource AccentBrush}" FontWeight="Bold" Margin="0,0,6,0"/>
+                                                <TextBlock Text="{Binding Name}" Foreground="{StaticResource TextBrush}" FontWeight="Bold"/>
+                                            </StackPanel>
+                                            <HierarchicalDataTemplate.ItemTemplate>
+                                                <DataTemplate>
+                                                    <StackPanel Orientation="Horizontal" Margin="0,2">
+                                                        <TextBlock Text="{Binding TaskId}" Foreground="{StaticResource SubTextBrush}" FontFamily="Consolas" Margin="0,0,8,0"/>
+                                                        <TextBlock Text="{Binding Title}" Foreground="{StaticResource TextBrush}" Margin="0,0,8,0"/>
+                                                        <TextBlock Text="[" Foreground="{StaticResource SubTextBrush}"/>
+                                                        <TextBlock Text="{Binding Status}" Foreground="{StaticResource PrimaryBrush}" FontWeight="SemiBold"/>
+                                                        <TextBlock Text="]" Foreground="{StaticResource SubTextBrush}"/>
+                                                    </StackPanel>
+                                                </DataTemplate>
+                                            </HierarchicalDataTemplate.ItemTemplate>
+                                        </HierarchicalDataTemplate>
+                                    </TreeView.ItemTemplate>
+                                </TreeView>
+                            </Grid>
+                        </Border>
+
+                        <!-- Right: Selected Node Details -->
+                        <Border Grid.Column="2" Background="{StaticResource InputBgBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="6" Padding="12">
+                            <Grid>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="*"/>
+                                </Grid.RowDefinitions>
+                                <TextBlock Grid.Row="0" Text="PLAN ITEM DETAILS" FontWeight="Bold" Foreground="{StaticResource SubTextBrush}" FontSize="11" Margin="0,0,0,6"/>
+                                <TextBox Grid.Row="1" Text="{Binding SelectedNodeDetailsText}" IsReadOnly="True" AcceptsReturn="True" TextWrapping="Wrap" Background="Transparent" Foreground="{StaticResource TextBrush}" BorderThickness="0" FontFamily="Consolas" FontSize="11"/>
+                            </Grid>
+                        </Border>
+                    </Grid>
+                </Grid>
+            </TabItem>
+
+            <!-- TAB 2: TASK EXECUTION & LOGS (PHASES 01-05) -->
+            <TabItem Header="TASK EXECUTION &amp; LOGS" FontSize="12" FontWeight="Bold">
+                <Grid Margin="0,10,0,0">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="6*" />
+                        <ColumnDefinition Width="12" />
+                        <ColumnDefinition Width="4*" />
+                    </Grid.ColumnDefinitions>
+
+                    <!-- Left Column: Prompt & Actions -->
+                    <Grid Grid.Column="0">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="*" />
+                            <RowDefinition Height="Auto" />
+                        </Grid.RowDefinitions>
+
+                        <TextBlock Grid.Row="0" Text="PROMPT SPECIFICATION" FontWeight="SemiBold" Foreground="{StaticResource SubTextBrush}" Margin="0,0,0,6"/>
                         
-                        <Grid Margin="0,2">
-                            <TextBlock Text="Task ID:" Foreground="{StaticResource SubTextBrush}" FontSize="12"/>
-                            <TextBlock Text="{Binding CurrentTaskId}" HorizontalAlignment="Right" FontSize="12" FontFamily="Consolas"/>
-                        </Grid>
-                        
-                        <Grid Margin="0,2">
-                            <TextBlock Text="Status:" Foreground="{StaticResource SubTextBrush}" FontSize="12"/>
-                            <TextBlock Text="{Binding CurrentTaskStatusText}" HorizontalAlignment="Right" FontWeight="SemiBold" FontSize="12"/>
-                        </Grid>
+                        <TextBox Grid.Row="1" 
+                                 Text="{Binding PromptText, UpdateSourceTrigger=PropertyChanged}"
+                                 AcceptsReturn="True" 
+                                 TextWrapping="Wrap" 
+                                 VerticalScrollBarVisibility="Auto"
+                                 Padding="10"
+                                 Margin="0,0,0,10"
+                                 ToolTip="Enter prompt instructions for coding agent..."/>
 
-                        <Grid Margin="0,2">
-                            <TextBlock Text="Started:" Foreground="{StaticResource SubTextBrush}" FontSize="12"/>
-                            <TextBlock Text="{Binding CurrentTaskStarted}" HorizontalAlignment="Right" FontSize="12"/>
-                        </Grid>
+                        <!-- Action Buttons -->
+                        <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right">
+                            <Button Content="HỦY" Command="{Binding CancelTaskCommand}" Background="#FF5555" Foreground="White" Width="100" Margin="0,0,10,0"/>
+                            <Button Content="GIAO VIỆC" Command="{Binding SubmitTaskCommand}" Background="{StaticResource AccentBrush}" Foreground="#1E1E2E" FontWeight="Bold" Width="130"/>
+                        </StackPanel>
+                    </Grid>
 
-                        <Grid Margin="0,2">
-                            <TextBlock Text="Completed:" Foreground="{StaticResource SubTextBrush}" FontSize="12"/>
-                            <TextBlock Text="{Binding CurrentTaskCompleted}" HorizontalAlignment="Right" FontSize="12"/>
-                        </Grid>
-                    </StackPanel>
-                </Border>
+                    <!-- Right Column: Current Task & Logs -->
+                    <Grid Grid.Column="2">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="*" />
+                        </Grid.RowDefinitions>
 
-                <TextBlock Grid.Row="1" Text="APPLICATION LOGS" FontWeight="SemiBold" Foreground="{StaticResource SubTextBrush}" Margin="0,0,0,6"/>
+                        <!-- Current Task Info -->
+                        <Border Grid.Row="0" Background="{StaticResource CardBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="6" Padding="12" Margin="0,0,0,10">
+                            <StackPanel>
+                                <TextBlock Text="CURRENT TASK" FontWeight="SemiBold" Foreground="{StaticResource PrimaryBrush}" FontSize="12" Margin="0,0,0,8"/>
+                                
+                                <Grid Margin="0,2">
+                                    <TextBlock Text="Task ID:" Foreground="{StaticResource SubTextBrush}" FontSize="12"/>
+                                    <TextBlock Text="{Binding CurrentTaskId}" HorizontalAlignment="Right" FontSize="12" FontFamily="Consolas"/>
+                                </Grid>
+                                
+                                <Grid Margin="0,2">
+                                    <TextBlock Text="Status:" Foreground="{StaticResource SubTextBrush}" FontSize="12"/>
+                                    <TextBlock Text="{Binding CurrentTaskStatusText}" HorizontalAlignment="Right" FontWeight="SemiBold" FontSize="12"/>
+                                </Grid>
 
-                <!-- Log Output Box -->
-                <Border Grid.Row="2" Background="{StaticResource InputBgBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="4" Padding="6">
-                    <ListBox ItemsSource="{Binding LogEntries}" 
-                             Background="Transparent" 
-                             BorderThickness="0" 
-                             ScrollViewer.HorizontalScrollBarVisibility="Auto"
-                             ScrollViewer.VerticalScrollBarVisibility="Auto"
-                             FontFamily="Consolas" 
-                             FontSize="11">
-                        <ListBox.ItemTemplate>
-                            <DataTemplate>
-                                <TextBlock Text="{Binding FormattedText}" Foreground="{StaticResource TextBrush}" Margin="0,1"/>
-                            </DataTemplate>
-                        </ListBox.ItemTemplate>
-                    </ListBox>
-                </Border>
-            </Grid>
-        </Grid>
+                                <Grid Margin="0,2">
+                                    <TextBlock Text="Started:" Foreground="{StaticResource SubTextBrush}" FontSize="12"/>
+                                    <TextBlock Text="{Binding CurrentTaskStarted}" HorizontalAlignment="Right" FontSize="12"/>
+                                </Grid>
+
+                                <Grid Margin="0,2">
+                                    <TextBlock Text="Completed:" Foreground="{StaticResource SubTextBrush}" FontSize="12"/>
+                                    <TextBlock Text="{Binding CurrentTaskCompleted}" HorizontalAlignment="Right" FontSize="12"/>
+                                </Grid>
+                            </StackPanel>
+                        </Border>
+
+                        <TextBlock Grid.Row="1" Text="APPLICATION LOGS" FontWeight="SemiBold" Foreground="{StaticResource SubTextBrush}" Margin="0,0,0,6"/>
+
+                        <!-- Log Output Box -->
+                        <Border Grid.Row="2" Background="{StaticResource InputBgBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="4" Padding="6">
+                            <ListBox ItemsSource="{Binding LogEntries}" 
+                                     Background="Transparent" 
+                                     BorderThickness="0" 
+                                     ScrollViewer.HorizontalScrollBarVisibility="Auto"
+                                     ScrollViewer.VerticalScrollBarVisibility="Auto"
+                                     FontFamily="Consolas" 
+                                     FontSize="11">
+                                <ListBox.ItemTemplate>
+                                    <DataTemplate>
+                                        <TextBlock Text="{Binding FormattedText}" Foreground="{StaticResource TextBrush}" Margin="0,1"/>
+                                    </DataTemplate>
+                                </ListBox.ItemTemplate>
+                            </ListBox>
+                        </Border>
+                    </Grid>
+                </Grid>
+            </TabItem>
+        </TabControl>
     </Grid>
 </Window>

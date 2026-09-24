@@ -8,4 +8,12 @@ public partial class MainWindow : Window
     {
         InitializeComponent();
     }
+
+    private void TreeView_SelectedItemChanged(object sender, RoutedPropertyChangedEventArgs<object> e)
+    {
+        if (DataContext is ViewModels.MainViewModel vm && e.NewValue != null)
+        {
+            vm.SelectNodeDetails(e.NewValue);
+        }
+    }
 }

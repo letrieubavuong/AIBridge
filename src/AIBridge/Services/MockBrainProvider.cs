@@ -62,6 +62,12 @@ public class MockBrainProvider : IAIBrainProvider
                 break;
 
             case BrainRequestType.Plan:
+                response.Decision = BrainDecision.PASS;
+                response.Reason = "Mock Brain generated deterministic project plan.";
+                response.Summary = "PLAN: Project plan generated successfully.";
+                response.RawOutput = GenerateMockProjectPlanJson(request);
+                break;
+
             case BrainRequestType.GenerateTask:
                 response.Decision = BrainDecision.NEXT_TASK;
                 response.Reason = "Task generation plan produced next actionable step.";
@@ -97,5 +103,142 @@ public class MockBrainProvider : IAIBrainProvider
         }
 
         return response;
+    }
+
+    private static string GenerateMockProjectPlanJson(BrainRequest request)
+    {
+        string projName = string.IsNullOrWhiteSpace(request.ProjectId) || request.ProjectId == "AIBridge"
+            ? "Mock Development Application"
+            : request.ProjectId;
+
+        string goal = string.IsNullOrWhiteSpace(request.TaskPrompt)
+            ? "Build application feature set."
+            : request.TaskPrompt;
+
+        var mockPlan = new ProjectPlan
+        {
+            ProjectId = "project-" + Guid.NewGuid().ToString("N")[..8],
+            Name = projName,
+            Description = "Deterministic development plan produced by Mock Brain for testing and development.",
+            Goal = goal,
+            Status = ProjectPlanStatus.Draft,
+            Version = 1,
+            Phases = new List<PhasePlan>
+            {
+                new PhasePlan
+                {
+                    PhaseId = "phase-01",
+                    PhaseNumber = 1,
+                    Name = "Phase 1 — Foundation",
+                    Objective = "Setup core application architecture and repository structure.",
+                    Description = "Foundation setup phase.",
+                    Status = PhaseStatus.NotStarted,
+                    Weight = 1.0,
+                    Tasks = new List<TaskPlan>
+                    {
+                        new TaskPlan
+                        {
+                            TaskId = "task-01-01",
+                            PhaseId = "phase-01",
+                            TaskNumber = 1,
+                            Title = "Task 1.1 — Solution Architecture & Setup",
+                            Objective = "Initialize solution layout, project dependencies, and base models.",
+                            Description = "Configure base project and solution.",
+                            Status = TaskPlanStatus.NotStarted,
+                            EstimatedComplexity = "Low",
+                            MaxRetries = 3
+                        },
+                        new TaskPlan
+                        {
+                            TaskId = "task-01-02",
+                            PhaseId = "phase-01",
+                            TaskNumber = 2,
+                            Title = "Task 1.2 — Core Domain Models",
+                            Objective = "Define strongly-typed domain entities and interfaces.",
+                            Description = "Implement domain objects.",
+                            Status = TaskPlanStatus.NotStarted,
+                            EstimatedComplexity = "Medium",
+                            MaxRetries = 3,
+                            Dependencies = new List<string> { "task-01-01" }
+                        }
+                    }
+                },
+                new PhasePlan
+                {
+                    PhaseId = "phase-02",
+                    PhaseNumber = 2,
+                    Name = "Phase 2 — Core Implementation",
+                    Objective = "Implement business services and persistence layers.",
+                    Description = "Core features development.",
+                    Status = PhaseStatus.NotStarted,
+                    Weight = 1.0,
+                    Dependencies = new List<string> { "phase-01" },
+                    Tasks = new List<TaskPlan>
+                    {
+                        new TaskPlan
+                        {
+                            TaskId = "task-02-01",
+                            PhaseId = "phase-02",
+                            TaskNumber = 1,
+                            Title = "Task 2.1 — Persistence & Storage Layer",
+                            Objective = "Build local data persistence and repository services.",
+                            Description = "Database or file store implementation.",
+                            Status = TaskPlanStatus.NotStarted,
+                            EstimatedComplexity = "Medium",
+                            MaxRetries = 3,
+                            Dependencies = new List<string> { "task-01-02" }
+                        },
+                        new TaskPlan
+                        {
+                            TaskId = "task-02-02",
+                            PhaseId = "phase-02",
+                            TaskNumber = 2,
+                            Title = "Task 2.2 — Business Workflows & APIs",
+                            Objective = "Implement application services and API controller logic.",
+                            Description = "Business service logic.",
+                            Status = TaskPlanStatus.NotStarted,
+                            EstimatedComplexity = "High",
+                            MaxRetries = 3,
+                            Dependencies = new List<string> { "task-02-01" }
+                        }
+                    }
+                },
+                new PhasePlan
+                {
+                    PhaseId = "phase-03",
+                    PhaseNumber = 3,
+                    Name = "Phase 3 — Verification & Delivery",
+                    Objective = "Verify complete application functionality via automated testing.",
+                    Description = "Verification and final validation.",
+                    Status = PhaseStatus.NotStarted,
+                    Weight = 1.0,
+                    Dependencies = new List<string> { "phase-02" },
+                    Tasks = new List<TaskPlan>
+                    {
+                        new TaskPlan
+                        {
+                            TaskId = "task-03-01",
+                            PhaseId = "phase-03",
+                            TaskNumber = 1,
+                            Title = "Task 3.1 — Automated Verification & Delivery",
+                            Objective = "Execute automated unit and integration verification tests.",
+                            Description = "Run full suite of tests.",
+                            Status = TaskPlanStatus.NotStarted,
+                            EstimatedComplexity = "Medium",
+                            MaxRetries = 3,
+                            Dependencies = new List<string> { "task-02-02" }
+                        }
+                    }
+                }
+            }
+        };
+
+        var options = new System.Text.Json.JsonSerializerOptions
+        {
+            WriteIndented = true,
+            Converters = { new System.Text.Json.Serialization.JsonStringEnumConverter() }
+        };
+
+        return System.Text.Json.JsonSerializer.Serialize(mockPlan, options);
     }
 }

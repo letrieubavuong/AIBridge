@@ -15,4 +15,5 @@ public class BrainResponse
     public long DurationMs { get; set; }
     public string? ErrorCode { get; set; }
     public string? ErrorMessage { get; set; }
+    public string? RawOutput { get; set; }
 }

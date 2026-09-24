@@ -28,6 +28,7 @@ public class BridgeServer : IBridgeServer
     private readonly IGitEvidenceService _gitEvidenceService;
     private readonly IAIBrainService _brainService;
     private readonly IAIBrainProviderRegistry _brainProviderRegistry;
+    private readonly IPlanningService _planningService;
 
     private WebApplication? _app;
     private BridgeStatus _status = BridgeStatus.Stopped;
@@ -80,7 +81,8 @@ public class BridgeServer : IBridgeServer
         IGitCommandService? gitCommandService = null,
         IGitEvidenceService? gitEvidenceService = null,
         IAIBrainService? brainService = null,
-        IAIBrainProviderRegistry? brainProviderRegistry = null)
+        IAIBrainProviderRegistry? brainProviderRegistry = null,
+        IPlanningService? planningService = null)
     {
         _configService = configService ?? throw new ArgumentNullException(nameof(configService));
         _logService = logService ?? throw new ArgumentNullException(nameof(logService));
@@ -105,6 +107,7 @@ public class BridgeServer : IBridgeServer
         }
 
         _brainService = brainService ?? new AIBrainService(_logService, _configService, _brainProviderRegistry);
+        _planningService = planningService ?? new PlanningService(_brainService, new PlanValidator(), new FileProjectPlanStore());
     }
 
     public async Task<bool> StartAsync()
@@ -725,6 +728,151 @@ public class BridgeServer : IBridgeServer
 
             var response = await _brainService.AnalyzeAsync(request, context.RequestAborted);
             return Results.Ok(response);
+        });
+
+        // --- PHASE 06: PLANNING API ENDPOINTS ---
+
+        // POST /api/planning/generate
+        app.MapPost("/api/planning/generate", async (HttpContext context) =>
+        {
+            PlanningRequest? request;
+            try
+            {
+                request = await context.Request.ReadFromJsonAsync<PlanningRequest>(JsonOptions);
+            }
+            catch
+            {
+                return Results.Json(new ErrorResponse { Error = "INVALID_JSON", Message = "Malformed JSON request body." }, statusCode: StatusCodes.Status400BadRequest);
+            }
+
+            if (request == null)
+            {
+                return Results.Json(new ErrorResponse { Error = "INVALID_REQUEST", Message = "Planning request body cannot be null." }, statusCode: StatusCodes.Status400BadRequest);
+            }
+
+            var result = await _planningService.GeneratePlanAsync(request, context.RequestAborted);
+            return Results.Ok(result);
+        });
+
+        // GET /api/projects
+        app.MapGet("/api/projects", async (HttpContext context) =>
+        {
+            var projects = await _planningService.GetProjectsAsync(context.RequestAborted);
+            return Results.Ok(projects);
+        });
+
+        // GET /api/projects/{projectId}
+        app.MapGet("/api/projects/{projectId}", async (string projectId, HttpContext context) =>
+        {
+            var plan = await _planningService.GetPlanAsync(projectId, context.RequestAborted);
+            if (plan == null)
+            {
+                return Results.Json(new ErrorResponse { Error = "PLAN_NOT_FOUND", Message = $"Project '{projectId}' not found." }, statusCode: StatusCodes.Status404NotFound);
+            }
+            return Results.Ok(plan);
+        });
+
+        // GET /api/projects/{projectId}/plan
+        app.MapGet("/api/projects/{projectId}/plan", async (string projectId, HttpContext context) =>
+        {
+            var plan = await _planningService.GetPlanAsync(projectId, context.RequestAborted);
+            if (plan == null)
+            {
+                return Results.Json(new ErrorResponse { Error = "PLAN_NOT_FOUND", Message = $"Project '{projectId}' not found." }, statusCode: StatusCodes.Status404NotFound);
+            }
+            return Results.Ok(plan);
+        });
+
+        // POST /api/projects/{projectId}/plan/revise
+        app.MapPost("/api/projects/{projectId}/plan/revise", async (string projectId, HttpContext context) =>
+        {
+            string revisionPrompt = string.Empty;
+            try
+            {
+                using var doc = await JsonDocument.ParseAsync(context.Request.Body, cancellationToken: context.RequestAborted);
+                if (doc.RootElement.TryGetProperty("revisionPrompt", out var prop))
+                {
+                    revisionPrompt = prop.GetString() ?? string.Empty;
+                }
+            }
+            catch { }
+
+            var result = await _planningService.RevisePlanAsync(projectId, revisionPrompt, context.RequestAborted);
+            if (!result.Success && result.ErrorCode == PlanningErrorCode.PlanNotFound)
+            {
+                return Results.Json(new ErrorResponse { Error = result.ErrorCode, Message = result.ErrorMessage ?? "Plan not found." }, statusCode: StatusCodes.Status404NotFound);
+            }
+            return Results.Ok(result);
+        });
+
+        // POST /api/projects/{projectId}/plan/approve
+        app.MapPost("/api/projects/{projectId}/plan/approve", async (string projectId, HttpContext context) =>
+        {
+            string reason = string.Empty;
+            try
+            {
+                using var doc = await JsonDocument.ParseAsync(context.Request.Body, cancellationToken: context.RequestAborted);
+                if (doc.RootElement.TryGetProperty("reason", out var prop))
+                {
+                    reason = prop.GetString() ?? string.Empty;
+                }
+            }
+            catch { }
+
+            var result = await _planningService.ApprovePlanAsync(projectId, reason, context.RequestAborted);
+            if (!result.Success)
+            {
+                int statusCode = result.ErrorCode == PlanningErrorCode.PlanNotFound ? StatusCodes.Status404NotFound : StatusCodes.Status400BadRequest;
+                return Results.Json(new ErrorResponse { Error = result.ErrorCode ?? "APPROVAL_FAILED", Message = result.ErrorMessage ?? "Approval failed." }, statusCode: statusCode);
+            }
+            return Results.Ok(result);
+        });
+
+        // GET /api/projects/{projectId}/versions
+        app.MapGet("/api/projects/{projectId}/versions", async (string projectId, HttpContext context) =>
+        {
+            var versions = await _planningService.GetVersionsAsync(projectId, context.RequestAborted);
+            return Results.Ok(versions);
+        });
+
+        // GET /api/projects/{projectId}/versions/{version}
+        app.MapGet("/api/projects/{projectId}/versions/{version:int}", async (string projectId, int version, HttpContext context) =>
+        {
+            var plan = await _planningService.GetPlanVersionAsync(projectId, version, context.RequestAborted);
+            if (plan == null)
+            {
+                return Results.Json(new ErrorResponse { Error = "VERSION_NOT_FOUND", Message = $"Version {version} for project '{projectId}' not found." }, statusCode: StatusCodes.Status404NotFound);
+            }
+            return Results.Ok(plan);
+        });
+
+        // GET /api/projects/{projectId}/progress
+        app.MapGet("/api/projects/{projectId}/progress", async (string projectId, HttpContext context) =>
+        {
+            var plan = await _planningService.GetPlanAsync(projectId, context.RequestAborted);
+            if (plan == null)
+            {
+                return Results.Json(new ErrorResponse { Error = "PLAN_NOT_FOUND", Message = $"Project '{projectId}' not found." }, statusCode: StatusCodes.Status404NotFound);
+            }
+            var progress = _planningService.CalculateProjectProgress(plan);
+            return Results.Ok(progress);
+        });
+
+        // GET /api/projects/{projectId}/phases/{phaseId}/progress
+        app.MapGet("/api/projects/{projectId}/phases/{phaseId}/progress", async (string projectId, string phaseId, HttpContext context) =>
+        {
+            var plan = await _planningService.GetPlanAsync(projectId, context.RequestAborted);
+            if (plan == null)
+            {
+                return Results.Json(new ErrorResponse { Error = "PLAN_NOT_FOUND", Message = $"Project '{projectId}' not found." }, statusCode: StatusCodes.Status404NotFound);
+            }
+            var phase = plan.Phases.FirstOrDefault(p => string.Equals(p.PhaseId, phaseId, StringComparison.OrdinalIgnoreCase));
+            if (phase == null)
+            {
+                return Results.Json(new ErrorResponse { Error = "PHASE_NOT_FOUND", Message = $"Phase '{phaseId}' not found in project '{projectId}'." }, statusCode: StatusCodes.Status404NotFound);
+            }
+            var phaseProgress = _planningService.CalculatePhaseProgress(phase);
+            return Results.Ok(phaseProgress);
         });
     }
 
