@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.IO;
+using System.Net.Http;
 using System.Text;
 using AIBridge.Models;
 
@@ -157,47 +158,73 @@ public class AntigravityEnvironmentService : IAntigravityEnvironmentService
 
     public async Task<bool> InstallCliAsync(CancellationToken cancellationToken = default)
     {
-        _logService.LogInfo("Starting official Antigravity CLI installation via PowerShell installer...");
+        _logService.LogInfo("Starting official Antigravity CLI installation via safe 2-step download & execution...");
+
+        var tempScriptPath = Path.Combine(Path.GetTempPath(), $"antigravity-install-{Guid.NewGuid():N}.ps1");
 
         try
         {
+            // 1. Download official installer script via HTTPS to a temporary file
+            const string installerUrl = "https://antigravity.google/install.ps1";
+            _logService.LogInfo($"Downloading official installer script from '{installerUrl}'...");
+
+            using (var httpClient = new HttpClient())
+            {
+                var response = await httpClient.GetAsync(installerUrl, cancellationToken);
+                response.EnsureSuccessStatusCode();
+
+                var scriptBytes = await response.Content.ReadAsByteArrayAsync(cancellationToken);
+                if (scriptBytes.Length == 0)
+                {
+                    _logService.LogError("Downloaded installer script was empty (0 bytes). Installation aborted.");
+                    return false;
+                }
+
+                await File.WriteAllBytesAsync(tempScriptPath, scriptBytes, cancellationToken);
+                _logService.LogInfo($"Installer script downloaded successfully to '{tempScriptPath}' ({scriptBytes.Length} bytes).");
+            }
+
+            // 2. Execute the downloaded installer script safely via PowerShell -File
             var startInfo = new ProcessStartInfo
             {
                 FileName = "powershell.exe",
-                Arguments = "-ExecutionPolicy Bypass -NoProfile -Command \"iwr https://antigravity.google/install.ps1 -useb | iex\"",
+                Arguments = $"-ExecutionPolicy Bypass -NoProfile -File \"{tempScriptPath}\"",
                 UseShellExecute = false,
                 RedirectStandardOutput = true,
                 RedirectStandardError = true,
                 CreateNoWindow = true
             };
 
-            using var process = new Process { StartInfo = startInfo };
+            _logService.LogInfo("Executing installer script via PowerShell...");
 
-            process.OutputDataReceived += (sender, args) =>
+            using (var process = new Process { StartInfo = startInfo })
             {
-                if (args.Data != null)
+                process.OutputDataReceived += (sender, args) =>
                 {
-                    _logService.LogInfo($"[INSTALLER] {args.Data}");
-                }
-            };
+                    if (args.Data != null)
+                    {
+                        _logService.LogInfo($"[INSTALLER] {args.Data}");
+                    }
+                };
 
-            process.ErrorDataReceived += (sender, args) =>
-            {
-                if (args.Data != null)
+                process.ErrorDataReceived += (sender, args) =>
                 {
-                    _logService.LogWarning($"[INSTALLER STDERR] {args.Data}");
-                }
-            };
+                    if (args.Data != null)
+                    {
+                        _logService.LogWarning($"[INSTALLER STDERR] {args.Data}");
+                    }
+                };
 
-            process.Start();
-            process.BeginOutputReadLine();
-            process.BeginErrorReadLine();
+                process.Start();
+                process.BeginOutputReadLine();
+                process.BeginErrorReadLine();
 
-            await process.WaitForExitAsync(cancellationToken);
+                await process.WaitForExitAsync(cancellationToken);
 
-            _logService.LogInfo($"Installer process exited with code {process.ExitCode}.");
+                _logService.LogInfo($"Installer process exited with code {process.ExitCode}.");
+            }
 
-            // Post-install immediate check: check %LOCALAPPDATA%\agy\bin\agy.exe without relying on stale process PATH
+            // 3. Post-install check: Check %LOCALAPPDATA%\agy\bin\agy.exe directly without relying on current process PATH
             var localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
             var localAgyExe = Path.Combine(localAppData, "agy", "bin", "agy.exe");
 
@@ -208,6 +235,22 @@ public class AntigravityEnvironmentService : IAntigravityEnvironmentService
         {
             _logService.LogError("Antigravity CLI installation failed with an error", ex);
             return false;
+        }
+        finally
+        {
+            // Safe cleanup of temporary installer script file
+            try
+            {
+                if (File.Exists(tempScriptPath))
+                {
+                    File.Delete(tempScriptPath);
+                    _logService.LogInfo($"Cleaned up temporary installer file '{tempScriptPath}'.");
+                }
+            }
+            catch (Exception ex)
+            {
+                _logService.LogWarning($"Failed to cleanup temporary installer file '{tempScriptPath}': {ex.Message}");
+            }
         }
     }
 

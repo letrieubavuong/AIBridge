@@ -152,7 +152,7 @@ public class AntigravityRunner : ICodingAgentRunner
 
         var normalizedWorkspace = Path.GetFullPath(task.WorkspacePath);
         
-        // Use ONE authoritative CLI path resolution using task configured path or environment service
+        // Single authoritative CLI path resolution using task configured path or environment service
         var cliPath = ResolveCliPath(task.ConfiguredAgentPath);
 
         if (string.IsNullOrWhiteSpace(cliPath))
@@ -288,19 +288,12 @@ public class AntigravityRunner : ICodingAgentRunner
                 _logService.LogWarning($"Failed to cleanly kill process tree on cancellation: {ex.Message}");
             }
 
+            // Differentiate User Cancellation vs Timeout
             if (cancellationToken.IsCancellationRequested)
             {
-                _logService.LogWarning($"[INFO] Task execution was cancelled by user.");
-                return new AgentResult
-                {
-                    Success = false,
-                    ExitCode = -1,
-                    StartedAt = startTime,
-                    CompletedAt = endTime,
-                    StandardOutput = stdOutBuilder.ToString(),
-                    StandardError = stdErrBuilder.ToString(),
-                    ErrorMessage = "Task execution was cancelled by user."
-                };
+                _logService.LogWarning("[INFO] Task execution was cancelled by user.");
+                // Rethrow OperationCanceledException so TaskService cleanly sets AgentTaskStatus.Cancelled
+                throw new OperationCanceledException(cancellationToken);
             }
             else
             {
