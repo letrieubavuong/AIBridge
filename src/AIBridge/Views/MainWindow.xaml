@@ -16,11 +16,13 @@
             <RowDefinition Height="Auto" />
             <!-- 0. Header / Environment Status -->
             <RowDefinition Height="Auto" />
-            <!-- 1. Local Bridge Panel -->
+            <!-- 1. Local Bridge Panel + Git Panel -->
             <RowDefinition Height="Auto" />
-            <!-- 2. Configurations (Antigravity + Workspace) -->
+            <!-- 2. AI Brain & Progress Panel (Phase 05) -->
+            <RowDefinition Height="Auto" />
+            <!-- 3. Configurations (Antigravity + Workspace) -->
             <RowDefinition Height="*" />
-            <!-- 3. Main Content (Prompt + Current Task + Logs) -->
+            <!-- 4. Main Content (Prompt + Current Task + Logs) -->
         </Grid.RowDefinitions>
 
         <!-- 0. Header & Environment Overview -->
@@ -195,8 +197,107 @@
             </Grid>
         </Border>
 
-        <!-- 2. Configurations (Antigravity & Workspace) -->
-        <Grid Grid.Row="2" Margin="0,0,0,12">
+        <!-- 2. AI Brain & Progress Panel (Phase 05) -->
+        <Grid Grid.Row="2" Margin="0,0,0,8">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="12" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+
+            <!-- AI Brain Panel -->
+            <Border Grid.Column="0" Background="{StaticResource CardBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="6" Padding="12,8">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+
+                    <StackPanel Grid.Row="0" Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,0,6">
+                        <TextBlock Text="AI BRAIN" FontWeight="Bold" Foreground="{StaticResource PrimaryBrush}" FontSize="13" VerticalAlignment="Center" Margin="0,0,10,0"/>
+                        <TextBlock Text="Provider:" Foreground="{StaticResource SubTextBrush}" FontSize="11" VerticalAlignment="Center" Margin="0,0,4,0"/>
+                        <ComboBox ItemsSource="{Binding BrainProviders}"
+                                  SelectedItem="{Binding SelectedBrainProvider}"
+                                  DisplayMemberPath="DisplayName"
+                                  Width="110" FontSize="11" Margin="0,0,8,0" VerticalAlignment="Center"/>
+
+                        <Border Background="#1E1E2E" Padding="5,2" CornerRadius="4" Margin="0,0,6,0">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="Model: " Foreground="{StaticResource SubTextBrush}" FontSize="11"/>
+                                <TextBlock Text="{Binding BrainModelText}" Foreground="{StaticResource TextBrush}" FontSize="11"/>
+                            </StackPanel>
+                        </Border>
+
+                        <Border Background="#1E1E2E" Padding="5,2" CornerRadius="4">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="Status: " Foreground="{StaticResource SubTextBrush}" FontSize="11"/>
+                                <TextBlock Text="{Binding BrainStatusText}" Foreground="{StaticResource AccentBrush}" FontWeight="Bold" FontSize="11"/>
+                            </StackPanel>
+                        </Border>
+                    </StackPanel>
+
+                    <Grid Grid.Row="1">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+
+                        <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
+                            <TextBlock Text="Last Req: " Foreground="{StaticResource SubTextBrush}" FontSize="11"/>
+                            <TextBlock Text="{Binding LastBrainRequestText}" Foreground="{StaticResource TextBrush}" FontWeight="SemiBold" FontSize="11" Margin="0,0,8,0"/>
+                            <TextBlock Text="Decision: " Foreground="{StaticResource SubTextBrush}" FontSize="11"/>
+                            <TextBlock Text="{Binding LastBrainDecisionText}" Foreground="{StaticResource AccentBrush}" FontWeight="Bold" FontSize="11" Margin="0,0,8,0"/>
+                            <TextBlock Text="Duration: " Foreground="{StaticResource SubTextBrush}" FontSize="11"/>
+                            <TextBlock Text="{Binding LastBrainDurationText}" Foreground="{StaticResource TextBrush}" FontSize="11"/>
+                        </StackPanel>
+
+                        <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                            <Button Content="TEST BRAIN" Command="{Binding TestBrainCommand}" Background="{StaticResource AccentBrush}" Foreground="#1E1E2E" FontWeight="Bold" Padding="8,2" Margin="0,0,6,0" FontSize="11"/>
+                            <Button Content="VIEW LAST RESPONSE" Command="{Binding ViewLastBrainResponseCommand}" Padding="8,2" FontSize="11"/>
+                        </StackPanel>
+                    </Grid>
+                </Grid>
+            </Border>
+
+            <!-- Progress Panel -->
+            <Border Grid.Column="2" Background="{StaticResource CardBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="6" Padding="12,8">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+
+                    <!-- Project Progress -->
+                    <Grid Grid.Row="0" Margin="0,0,0,6">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+
+                        <TextBlock Grid.Column="0" Text="PROJECT PROGRESS" FontWeight="Bold" Foreground="{StaticResource PrimaryBrush}" FontSize="11" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                        <ProgressBar Grid.Column="1" Value="{Binding ProjectPercent}" Minimum="0" Maximum="100" Height="12" Margin="0,0,8,0"/>
+                        <TextBlock Grid.Column="2" Text="{Binding ProjectProgressText}" Foreground="{StaticResource TextBrush}" FontSize="11" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                    </Grid>
+
+                    <!-- Phase Progress -->
+                    <Grid Grid.Row="1">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+
+                        <TextBlock Grid.Column="0" Text="CURRENT PHASE" FontWeight="Bold" Foreground="{StaticResource PrimaryBrush}" FontSize="11" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                        <ProgressBar Grid.Column="1" Value="{Binding PhasePercent}" Minimum="0" Maximum="100" Height="12" Margin="0,0,8,0"/>
+                        <TextBlock Grid.Column="2" Text="{Binding PhaseProgressText}" Foreground="{StaticResource SubTextBrush}" FontSize="10" VerticalAlignment="Center"/>
+                    </Grid>
+                </Grid>
+            </Border>
+        </Grid>
+
+        <!-- 3. Configurations (Antigravity & Workspace) -->
+        <Grid Grid.Row="3" Margin="0,0,0,12">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*" />
                 <ColumnDefinition Width="12" />
@@ -250,8 +351,8 @@
             </Border>
         </Grid>
 
-        <!-- 3. Main Workspace Area (Prompt, Task, Actions, Logs) -->
-        <Grid Grid.Row="3">
+        <!-- 4. Main Workspace Area (Prompt, Task, Actions, Logs) -->
+        <Grid Grid.Row="4">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="6*" />
                 <ColumnDefinition Width="12" />

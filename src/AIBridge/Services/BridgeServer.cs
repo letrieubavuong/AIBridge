@@ -26,6 +26,8 @@ public class BridgeServer : IBridgeServer
     private readonly IGitEnvironmentService _gitEnvironmentService;
     private readonly IGitCommandService _gitCommandService;
     private readonly IGitEvidenceService _gitEvidenceService;
+    private readonly IAIBrainService _brainService;
+    private readonly IAIBrainProviderRegistry _brainProviderRegistry;
 
     private WebApplication? _app;
     private BridgeStatus _status = BridgeStatus.Stopped;
@@ -76,7 +78,9 @@ public class BridgeServer : IBridgeServer
         ICodingAgentRunner antigravityRunner,
         IGitEnvironmentService? gitEnvironmentService = null,
         IGitCommandService? gitCommandService = null,
-        IGitEvidenceService? gitEvidenceService = null)
+        IGitEvidenceService? gitEvidenceService = null,
+        IAIBrainService? brainService = null,
+        IAIBrainProviderRegistry? brainProviderRegistry = null)
     {
         _configService = configService ?? throw new ArgumentNullException(nameof(configService));
         _logService = logService ?? throw new ArgumentNullException(nameof(logService));
@@ -88,6 +92,19 @@ public class BridgeServer : IBridgeServer
         _gitCommandService = gitCommandService ?? new GitCommandService(_logService);
         _gitEnvironmentService = gitEnvironmentService ?? new GitEnvironmentService(_logService, _gitCommandService);
         _gitEvidenceService = gitEvidenceService ?? new GitEvidenceService(_logService, _gitEnvironmentService, _gitCommandService);
+
+        if (brainProviderRegistry == null)
+        {
+            var reg = new AIBrainProviderRegistry();
+            reg.RegisterProvider(new MockBrainProvider());
+            _brainProviderRegistry = reg;
+        }
+        else
+        {
+            _brainProviderRegistry = brainProviderRegistry;
+        }
+
+        _brainService = brainService ?? new AIBrainService(_logService, _configService, _brainProviderRegistry);
     }
 
     public async Task<bool> StartAsync()
@@ -628,6 +645,86 @@ public class BridgeServer : IBridgeServer
                     Message = message
                 }, statusCode: statusCode);
             }
+        });
+
+        // GET /api/brain/providers
+        app.MapGet("/api/brain/providers", () =>
+        {
+            var descriptors = _brainProviderRegistry.GetAvailableProviders();
+            return Results.Ok(descriptors);
+        });
+
+        // GET /api/brain/status
+        app.MapGet("/api/brain/status", () =>
+        {
+            var config = _configService.LoadConfig();
+            var provider = _brainProviderRegistry.GetProvider(config.BrainProvider);
+            var isAvailable = provider?.Descriptor.IsAvailable ?? false;
+            var isConfigured = provider?.Descriptor.IsConfigured ?? false;
+            var history = _brainService.GetDecisionHistory();
+            var lastRecord = history.LastOrDefault();
+            var activeProviderId = provider?.Descriptor.Id ?? config.BrainProvider;
+
+            return Results.Ok(new
+            {
+                brainEnabled = config.BrainEnabled,
+                activeProvider = activeProviderId,
+                providerDisplayName = provider?.Descriptor.DisplayName ?? activeProviderId,
+                model = config.BrainModel,
+                endpoint = config.BrainEndpoint,
+                timeoutSeconds = config.BrainTimeoutSeconds,
+                isAvailable = isAvailable,
+                isConfigured = isConfigured,
+                automationMode = config.AutomationMode,
+                state = _brainService.GetCurrentState().ToString(),
+                lastRequestType = lastRecord?.RequestType.ToString(),
+                lastDecision = lastRecord?.Decision.ToString(),
+                lastDurationSeconds = lastRecord != null ? (double)lastRecord.DurationMs / 1000.0 : 0.0,
+                historyCount = history.Count
+            });
+        });
+
+        // POST /api/brain/test
+        app.MapPost("/api/brain/test", async () =>
+        {
+            var success = await _brainService.TestActiveProviderAsync();
+            var state = _brainService.GetCurrentState();
+            return Results.Ok(new
+            {
+                success = success,
+                state = state.ToString(),
+                message = success ? "Brain provider connectivity test PASSED." : "Brain provider connectivity test FAILED."
+            });
+        });
+
+        // POST /api/brain/analyze
+        app.MapPost("/api/brain/analyze", async (HttpContext context) =>
+        {
+            BrainRequest? request;
+            try
+            {
+                request = await context.Request.ReadFromJsonAsync<BrainRequest>(JsonOptions);
+            }
+            catch
+            {
+                return Results.Json(new ErrorResponse
+                {
+                    Error = "INVALID_JSON",
+                    Message = "Malformed JSON request body."
+                }, statusCode: StatusCodes.Status400BadRequest);
+            }
+
+            if (request == null)
+            {
+                return Results.Json(new ErrorResponse
+                {
+                    Error = "INVALID_REQUEST",
+                    Message = "Brain request body cannot be null."
+                }, statusCode: StatusCodes.Status400BadRequest);
+            }
+
+            var response = await _brainService.AnalyzeAsync(request, context.RequestAborted);
+            return Results.Ok(response);
         });
     }
 

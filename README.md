@@ -1,37 +1,40 @@
 # AIBridge
 
-AIBridge is a Windows desktop application serving as an execution bridge between ChatGPT Brain, Antigravity (and other coding agents), and local code workspaces.
+AIBridge is a Windows desktop application serving as an execution bridge between AI Brains (ChatGPT, Claude, Gemini, Local AI, etc.), Coding Agents (Antigravity today, extensible tomorrow), and local code workspaces.
 
 ## Architecture
 
 ```text
-ChatGPT Brain / Orchestrator
+AI Brain Provider (ChatGPT / OpenAI API / Claude / Gemini / Local AI / Custom)
+      |
+      v (IAIBrain / IAIBrainProvider abstraction)
+AIBrainService (Provider-independent reasoning & decision layer)
       |
       v (HTTP API: 127.0.0.1:8787)
-AIBridge.exe (BridgeServer)
+AIBridge.exe (BridgeServer + TaskService)
       |
       +---> GitEvidenceService (Before/After Snapshots, Diff, Secret Redaction)
       |
-      v (TaskService)
+      v (Coding Agent Abstraction)
 AntigravityRunner (agy)
       |
       v
 Local Workspace / GitHub Repository
 ```
 
-### Roles & Responsibilities
+### Critical Architecture Principles
 
-* **ChatGPT**: Brain (analyzes requirements, plans, generates prompts, delegates tasks, and reviews output using Git evidence).
-* **AIBridge**: Executor & Evidence Layer (provides embedded REST API + WPF UI to execute tasks via coding agents, captures Git evidence, safe push).
-* **Antigravity**: Primary Coding Agent (executes workspace modifications via `agy` CLI).
+* **AI Provider Agnostic**: Core AIBridge logic does **NOT** depend directly on ChatGPT, OpenAI, Claude, Gemini, or any specific AI vendor. Provider choice belongs to the user. Changing AI provider or account requires zero changes to `TaskService`, Git evidence, Antigravity CLI, coding-agent execution, or orchestration logic.
+* **Separation of Reasoning & Execution**: The AI Brain analyzes structured context (`BrainRequest`) and returns a structured decision (`BrainResponse`). The Brain does **NOT** directly execute decisions or commands; execution belongs to AIBridge orchestration and Human Gates.
+* **Coding Agent Replacement**: Coding Agents (Antigravity CLI today, future agents) are fully decoupled behind `ICodingAgentRunner`.
 
 ---
 
 ## Current Status
 
-`Phase 04 - GitHub Integration & Evidence Layer` (Completed)
+`Phase 05 — Provider-Agnostic AI Brain Foundation` (Completed)
 
-Phase 04 adds local Git discovery, pre/post task repository snapshotting, commit detection, bounded diff evidence collection (up to 256 KB) with secret redaction, remote branch push status, protected branch policies (`main`/`master`), and WPF compact evidence inspection.
+Phase 05 establishes the provider-agnostic AI Brain foundation, provider registry, deterministic Mock Brain provider, Windows DPAPI secret store (`ProtectedDataSecretStore`), context sanitizer and redaction layer, REST Brain endpoints, WPF AI Brain panel, progress tracking (Project & Phase progress), `AutomationMode` foundation, and Human Gate architectural hooks.
 
 ---
 
@@ -39,7 +42,7 @@ Phase 04 adds local Git discovery, pre/post task repository snapshotting, commit
 
 - **Base URL**: `http://127.0.0.1:8787` (Localhost only)
 - **Authentication**: `Authorization: Bearer <API_TOKEN>` or `X-AIBridge-Token: <API_TOKEN>`
-- **Request Size Limit**: 256 KB
+- **Request Size Limit**: 256 KB (API Payload) / 512 KB (Brain Context Bounded)
 
 ### API Endpoints
 
@@ -56,23 +59,32 @@ Phase 04 adds local Git discovery, pre/post task repository snapshotting, commit
 | `GET` | `/api/git/status` | Yes | Query current Git repository status, branch, HEAD, dirty state, and remote |
 | `GET` | `/api/tasks/{taskId}/git` | Yes | Retrieve Git evidence (before/after snapshots, diff, commit range, changed files) |
 | `POST` | `/api/tasks/{taskId}/git/push` | Yes | Push task commit to remote under safe push policies (no force push) |
+| `GET` | `/api/brain/providers` | Yes | Enumerate available Brain provider descriptors from registry |
+| `GET` | `/api/brain/status` | Yes | Query active Brain provider status, state, model, and history summary |
+| `POST` | `/api/brain/test` | Yes | Execute a safe connectivity test for active Brain provider |
+| `POST` | `/api/brain/analyze` | Yes | Submit a structured `BrainRequest` and return a structured `BrainResponse` |
+
+> [!NOTE]
+> `/api/brain/analyze` evaluates context and returns structured decisions (`PASS`, `RETRY`, `BLOCKED`, `NEXT_TASK`, `NEXT_PHASE`, `STOP`, `ASK_HUMAN`). It **never** automatically executes Antigravity CLI.
 
 ---
 
-## Git Evidence & Safety Policies (Phase 04)
+## AI Brain Abstraction & Security Model
 
-### Evidence Collection Lifecycle
-1. **Task Accepted**: `GitEvidenceService.CaptureSnapshotAsync()` captures `BeforeSnapshot` (HEAD SHA, branch, dirty state, untracked files).
-2. **Task Execution**: Antigravity executes task via `agy`.
-3. **Task Completion**: `GitEvidenceService.CaptureSnapshotAsync()` captures `AfterSnapshot` and calculates `GitEvidence`.
-4. **Diff Bounding & Redaction**: Diff text is bounded to 256 KB (`DiffTruncated = true` if exceeded) and scanned for credentials (`SecretRedactor`).
+### Brain Core Contracts
+* **`IAIBrain`**: Core contract `AnalyzeAsync(BrainRequest, CancellationToken)`. Contains zero vendor-specific types.
+* **`IAIBrainProvider`**: Provider adapter interface extending `IAIBrain` with `Descriptor` and `TestConnectionAsync`.
+* **`IAIBrainProviderRegistry`**: Dynamic enumeration and lookup of registered Brain providers.
+* **`MockBrainProvider`**: Deterministic development/test provider for offline verification.
 
-### Push & Protection Policy
-* **Default AutoPush**: `GitAutoPush = false` (Manual explicit trigger required).
-* **Protected Branches**: `main` and `master` are protected by default (`AllowPushToProtectedBranches = false`).
-* **Force Push**: Forbidden (`--force` and `--force-with-lease` are disabled).
-* **Non-Git Workspaces**: Fully supported; task execution completes with `status = NOT_A_GIT_REPOSITORY`.
-* **Git Not Installed**: Task execution completes with `status = GIT_NOT_INSTALLED`.
+### Credential & Data Security
+* **No Plaintext Keys**: API keys are encrypted at rest using Windows Data Protection API (`ProtectedDataSecretStore` / DPAPI). Never written in plaintext to `appsettings.json` or `AppConfig`.
+* **Secret Redaction**: `BrainContextSanitizer` runs before context reaches external providers, stripping Bearer tokens, GitHub tokens, OpenAI keys, passwords, and API credentials.
+* **Context Size Safeguards**: Total Brain context is bounded (max 512 KB, stdout max 128 KB, stderr max 64 KB, diff max 256 KB).
+
+### Automation Mode & Human Gates
+* **`AutomationMode`**: Supports `Manual`, `PhaseAuto`, and `FullAuto` (Default: `Manual`).
+* **Human Gate Hooks**: `RequiresHumanApproval` flag and `HumanGateReason` prepare the architecture for gated transitions (architecture changes, protected branch operations, phase transitions).
 
 ---
 
@@ -113,6 +125,7 @@ Output directory: `src/AIBridge/bin/Release/net10.0-windows/win-x64/publish/`
 - [x] **Phase 02 - Antigravity Integration** (Verified CLI installation, authentication, and execution runner)
 - [x] **Phase 03 - Local Bridge API** (Embedded HTTP Server 127.0.0.1:8787, API auth token, task registry, REST endpoints)
 - [x] **Phase 04 - GitHub Integration & Evidence Layer** (Git CLI wrapper, Before/After snapshots, evidence API, safe push policy, secret redaction)
-- [ ] **Phase 05 - ChatGPT Brain Foundation** (Brain-to-Bridge API connection & prompt exchange layer)
-- [ ] **Phase 06 - AI Review / Retry Loop** (Automated result evaluation & refinement loop)
-- [ ] **Phase 07 - Autonomous Orchestration** (Multi-agent end-to-end task execution)
+- [x] **Phase 05 - Provider-Agnostic AI Brain Foundation** (IAIBrain contract, provider registry, MockBrainProvider, DPAPI secret store, Brain API, progress tracking)
+- [ ] **Phase 06 - AI Planning / Phase & Task Planning** (Automated task decomposition & plan generation)
+- [ ] **Phase 07 - AI Review / Retry Loop** (Automated result evaluation & refinement loop)
+- [ ] **Phase 08 - Autonomous Orchestration** (Multi-agent end-to-end task execution)

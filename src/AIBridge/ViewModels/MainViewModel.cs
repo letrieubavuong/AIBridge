@@ -22,6 +22,8 @@ public class MainViewModel : ObservableObject
     private readonly IGitCommandService _gitCommandService;
     private readonly IGitEvidenceService _gitEvidenceService;
     private readonly ITaskRegistry _taskRegistry;
+    private readonly IAIBrainService _brainService;
+    private readonly IAIBrainProviderRegistry _brainProviderRegistry;
 
     private AppConfig _config = new();
     private string _antigravityPath = string.Empty;
@@ -61,13 +63,28 @@ public class MainViewModel : ObservableObject
     // Bridge Section Properties
     private bool _isTokenMasked = true;
 
+    // AI Brain Properties
+    private BrainProviderDescriptor? _selectedBrainProvider;
+    private string _brainModelText = "Development";
+    private string _brainStatusText = "READY";
+    private string _lastBrainRequestText = "-";
+    private string _lastBrainDecisionText = "-";
+    private string _lastBrainDurationText = "-";
+
+    // Progress Tracking Properties
+    private double _projectPercent = 33.3;
+    private double _phasePercent = 30.0;
+    private string _projectProgressText = "Phase 05 / 12 AI Brain Foundation";
+    private string _phaseProgressText = "3 / 10 tasks completed | Current: Brain Provider Registry | Status: RUNNING";
+    private string _automationModeText = "Manual";
+
     public string AppVersionText
     {
         get
         {
             var version = Assembly.GetExecutingAssembly().GetName().Version;
             var versionStr = version != null ? $"{version.Major}.{version.Minor}.{version.Build}" : "1.0.0";
-            return $"v{versionStr} (Phase 04)";
+            return $"v{versionStr} (Phase 05)";
         }
     }
 
@@ -303,6 +320,85 @@ public class MainViewModel : ObservableObject
     public ICommand ViewEvidenceCommand { get; }
     public ICommand PushGitCommand { get; }
 
+    public ObservableCollection<BrainProviderDescriptor> BrainProviders { get; } = new();
+
+    public BrainProviderDescriptor? SelectedBrainProvider
+    {
+        get => _selectedBrainProvider;
+        set
+        {
+            if (SetProperty(ref _selectedBrainProvider, value) && value != null)
+            {
+                _config.BrainProvider = value.Id;
+                SaveConfiguration();
+                _logService.LogInfo($"Selected AI Brain Provider changed to: {value.DisplayName} ({value.Id})");
+            }
+        }
+    }
+
+    public string BrainModelText
+    {
+        get => _brainModelText;
+        set => SetProperty(ref _brainModelText, value);
+    }
+
+    public string BrainStatusText
+    {
+        get => _brainStatusText;
+        set => SetProperty(ref _brainStatusText, value);
+    }
+
+    public string LastBrainRequestText
+    {
+        get => _lastBrainRequestText;
+        set => SetProperty(ref _lastBrainRequestText, value);
+    }
+
+    public string LastBrainDecisionText
+    {
+        get => _lastBrainDecisionText;
+        set => SetProperty(ref _lastBrainDecisionText, value);
+    }
+
+    public string LastBrainDurationText
+    {
+        get => _lastBrainDurationText;
+        set => SetProperty(ref _lastBrainDurationText, value);
+    }
+
+    public double ProjectPercent
+    {
+        get => _projectPercent;
+        set => SetProperty(ref _projectPercent, value);
+    }
+
+    public double PhasePercent
+    {
+        get => _phasePercent;
+        set => SetProperty(ref _phasePercent, value);
+    }
+
+    public string ProjectProgressText
+    {
+        get => _projectProgressText;
+        set => SetProperty(ref _projectProgressText, value);
+    }
+
+    public string PhaseProgressText
+    {
+        get => _phaseProgressText;
+        set => SetProperty(ref _phaseProgressText, value);
+    }
+
+    public string AutomationModeText
+    {
+        get => _automationModeText;
+        set => SetProperty(ref _automationModeText, value);
+    }
+
+    public ICommand TestBrainCommand { get; }
+    public ICommand ViewLastBrainResponseCommand { get; }
+
     public MainViewModel(
         IConfigService configService,
         ILogService logService,
@@ -313,7 +409,9 @@ public class MainViewModel : ObservableObject
         IGitEnvironmentService? gitEnvironmentService = null,
         IGitCommandService? gitCommandService = null,
         IGitEvidenceService? gitEvidenceService = null,
-        ITaskRegistry? taskRegistry = null)
+        ITaskRegistry? taskRegistry = null,
+        IAIBrainService? brainService = null,
+        IAIBrainProviderRegistry? brainProviderRegistry = null)
     {
         _configService = configService ?? throw new ArgumentNullException(nameof(configService));
         _logService = logService ?? throw new ArgumentNullException(nameof(logService));
@@ -326,6 +424,19 @@ public class MainViewModel : ObservableObject
         _gitEnvironmentService = gitEnvironmentService ?? new GitEnvironmentService(_logService, _gitCommandService);
         _gitEvidenceService = gitEvidenceService ?? new GitEvidenceService(_logService, _gitEnvironmentService, _gitCommandService);
         _taskRegistry = taskRegistry ?? new TaskRegistry();
+
+        if (brainProviderRegistry == null)
+        {
+            var reg = new AIBrainProviderRegistry();
+            reg.RegisterProvider(new MockBrainProvider());
+            _brainProviderRegistry = reg;
+        }
+        else
+        {
+            _brainProviderRegistry = brainProviderRegistry;
+        }
+
+        _brainService = brainService ?? new AIBrainService(_logService, _configService, _brainProviderRegistry);
 
         BrowseAntigravityCommand = new RelayCommand(ExecuteBrowseAntigravity);
         TestAntigravityCommand = new AsyncRelayCommand(ExecuteTestAntigravityAsync);
@@ -346,6 +457,9 @@ public class MainViewModel : ObservableObject
         RefreshGitCommand = new AsyncRelayCommand(ExecuteRefreshGitAsync);
         ViewEvidenceCommand = new RelayCommand(ExecuteViewEvidence);
         PushGitCommand = new AsyncRelayCommand(ExecutePushGitAsync);
+
+        TestBrainCommand = new AsyncRelayCommand(ExecuteTestBrainAsync);
+        ViewLastBrainResponseCommand = new RelayCommand(ExecuteViewLastBrainResponse);
 
         _taskService.CurrentTaskChanged += OnCurrentTaskChanged;
         _taskService.TaskUpdated += OnTaskUpdated;
@@ -383,6 +497,93 @@ public class MainViewModel : ObservableObject
             _logService.LogInfo("Auto-starting Local Bridge Server...");
             _ = ExecuteStartBridgeAsync();
         }
+
+        // Initialize Brain & Progress UI
+        BrainProviders.Clear();
+        var descriptors = _brainProviderRegistry.GetAvailableProviders();
+        foreach (var desc in descriptors)
+        {
+            BrainProviders.Add(desc);
+        }
+
+        var activeId = _config.BrainProvider;
+        SelectedBrainProvider = BrainProviders.FirstOrDefault(p => p.Id.Equals(activeId, StringComparison.OrdinalIgnoreCase))
+                               ?? BrainProviders.FirstOrDefault();
+
+        BrainModelText = _config.BrainModel;
+        BrainStatusText = _brainService.GetCurrentState().ToString().ToUpper();
+        AutomationModeText = _config.AutomationMode.ToString();
+
+        // Project progress: 4/12 phases completed (33.3%), Phase 05 = 3/10 tasks (30.0%)
+        ProjectPercent = 33.3;
+        PhasePercent = 30.0;
+        ProjectProgressText = "Phase 05 / 12 AI Brain Foundation";
+        PhaseProgressText = "3 / 10 tasks completed | Current: Brain Provider Registry | Status: RUNNING";
+    }
+
+    private async Task ExecuteTestBrainAsync()
+    {
+        _logService.LogInfo("Testing AI Brain Provider connectivity...");
+        BrainStatusText = "THINKING";
+        var success = await _brainService.TestActiveProviderAsync();
+        var state = _brainService.GetCurrentState();
+        BrainStatusText = state.ToString().ToUpper();
+
+        if (success)
+        {
+            MessageBox.Show($"AI Brain Test Succeeded!\nProvider: {SelectedBrainProvider?.DisplayName}\nState: {state}", "AI Brain Test", MessageBoxButton.OK, MessageBoxImage.Information);
+        }
+        else
+        {
+            MessageBox.Show($"AI Brain Test Failed!\nState: {state}", "AI Brain Test", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+
+        UpdateBrainUI();
+    }
+
+    private void ExecuteViewLastBrainResponse()
+    {
+        var history = _brainService.GetDecisionHistory();
+        var lastRecord = history.LastOrDefault();
+        if (lastRecord == null)
+        {
+            MessageBox.Show("No AI Brain decision recorded yet.", "Last AI Brain Response", MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+
+        var sb = new System.Text.StringBuilder();
+        sb.AppendLine($"Request ID: {lastRecord.RequestId}");
+        sb.AppendLine($"Request Type: {lastRecord.RequestType}");
+        sb.AppendLine($"Provider: {lastRecord.ProviderId}");
+        sb.AppendLine($"Model: {lastRecord.Model}");
+        sb.AppendLine($"Decision: {lastRecord.Decision}");
+        sb.AppendLine($"Summary: {lastRecord.Summary}");
+        sb.AppendLine($"Success: {lastRecord.Success}");
+        if (!string.IsNullOrEmpty(lastRecord.ErrorCode))
+        {
+            sb.AppendLine($"Error Code: {lastRecord.ErrorCode}");
+        }
+        sb.AppendLine($"Started: {lastRecord.StartedAt:HH:mm:ss}");
+        sb.AppendLine($"Completed: {lastRecord.CompletedAt:HH:mm:ss}");
+        sb.AppendLine($"Duration: {lastRecord.DurationSeconds:F3}s");
+
+        MessageBox.Show(sb.ToString(), "Last AI Brain Response", MessageBoxButton.OK, MessageBoxImage.Information);
+    }
+
+    private void UpdateBrainUI()
+    {
+        RunOnUi(() =>
+        {
+            BrainStatusText = _brainService.GetCurrentState().ToString().ToUpper();
+            var history = _brainService.GetDecisionHistory();
+            var lastRecord = history.LastOrDefault();
+            if (lastRecord != null)
+            {
+                LastBrainRequestText = lastRecord.RequestType.ToString();
+                LastBrainDecisionText = lastRecord.Decision.ToString();
+                LastBrainDurationText = $"{lastRecord.DurationSeconds:F3}s";
+            }
+        });
     }
 
     private void OnBridgeStatusChanged(BridgeStatus newStatus)

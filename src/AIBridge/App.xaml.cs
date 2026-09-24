@@ -30,6 +30,11 @@ public partial class App : Application
             config.AntigravityTimeoutMinutes
         );
 
+        IAIBrainProviderRegistry brainProviderRegistry = new AIBrainProviderRegistry();
+        brainProviderRegistry.RegisterProvider(new MockBrainProvider());
+
+        IAIBrainService brainService = new AIBrainService(logService, configService, brainProviderRegistry);
+
         _bridgeServer = new BridgeServer(
             configService,
             logService,
@@ -39,7 +44,9 @@ public partial class App : Application
             antigravityRunner,
             gitEnvService,
             gitCmdService,
-            gitEvidenceService
+            gitEvidenceService,
+            brainService,
+            brainProviderRegistry
         );
 
         var viewModel = new MainViewModel(
@@ -48,7 +55,13 @@ public partial class App : Application
             _taskService, 
             environmentService, 
             antigravityRunner,
-            _bridgeServer
+            _bridgeServer,
+            gitEnvService,
+            gitCmdService,
+            gitEvidenceService,
+            taskRegistry,
+            brainService,
+            brainProviderRegistry
         );
 
         var mainWindow = new MainWindow

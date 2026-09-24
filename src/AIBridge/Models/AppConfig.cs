@@ -17,4 +17,12 @@ public class AppConfig
     public bool GitAutoPush { get; set; } = false;
     public bool AllowPushToProtectedBranches { get; set; } = false;
     public List<string> ProtectedBranches { get; set; } = new() { "main", "master" };
+
+    // AI Brain Configuration (Phase 05)
+    public string BrainProvider { get; set; } = "mock";
+    public string BrainModel { get; set; } = "Development-Mock-v1";
+    public string BrainEndpoint { get; set; } = string.Empty;
+    public int BrainTimeoutSeconds { get; set; } = 120;
+    public bool BrainEnabled { get; set; } = true;
+    public string AutomationMode { get; set; } = "Manual";
 }
