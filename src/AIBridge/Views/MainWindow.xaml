@@ -5,23 +5,23 @@
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:viewmodels="clr-namespace:AIBridge.ViewModels"
         mc:Ignorable="d"
-        Title="AIBridge — Desktop Foundation" 
-        Height="780" Width="1080"
-        MinHeight="600" MinWidth="850"
+        Title="AIBridge — Real Execution Foundation" 
+        Height="800" Width="1120"
+        MinHeight="620" MinWidth="900"
         WindowStartupLocation="CenterScreen"
         Background="{StaticResource BgBrush}">
 
     <Grid Margin="16">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
-            <!-- Header / Bridge Status -->
+            <!-- Header / Environment Status -->
             <RowDefinition Height="Auto" />
             <!-- Configurations (Antigravity + Workspace) -->
             <RowDefinition Height="*" />
             <!-- Main Content (Prompt + Current Task + Logs) -->
         </Grid.RowDefinitions>
 
-        <!-- 1. Header & Bridge Status -->
+        <!-- 1. Header & Environment Overview -->
         <Border Grid.Row="0" Background="{StaticResource CardBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="6" Padding="16,12" Margin="0,0,0,12">
             <Grid>
                 <Grid.ColumnDefinitions>
@@ -31,25 +31,52 @@
 
                 <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
                     <TextBlock Text="AIBridge" FontSize="20" FontWeight="Bold" Foreground="{StaticResource PrimaryBrush}" VerticalAlignment="Center"/>
-                    <TextBlock Text="— Phase 01 Desktop Foundation" FontSize="14" Foreground="{StaticResource SubTextBrush}" VerticalAlignment="Center" Margin="10,2,0,0"/>
+                    <TextBlock Text="— Environment Setup" FontSize="14" Foreground="{StaticResource SubTextBrush}" VerticalAlignment="Center" Margin="10,2,0,0"/>
                 </StackPanel>
 
                 <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
                     <Border Background="#1E1E2E" Padding="10,4" CornerRadius="4" Margin="0,0,8,0">
                         <StackPanel Orientation="Horizontal">
-                            <TextBlock Text="Bridge Status: " Foreground="{StaticResource SubTextBrush}" />
-                            <TextBlock Text="{Binding BridgeStatusText}" Foreground="{StaticResource AccentBrush}" FontWeight="SemiBold" />
+                            <TextBlock Text="Windows: " Foreground="{StaticResource SubTextBrush}" FontSize="12"/>
+                            <TextBlock Text="READY" Foreground="{StaticResource AccentBrush}" FontWeight="SemiBold" FontSize="12"/>
                         </StackPanel>
                     </Border>
                     <Border Background="#1E1E2E" Padding="10,4" CornerRadius="4" Margin="0,0,8,0">
                         <StackPanel Orientation="Horizontal">
-                            <TextBlock Text="Port: " Foreground="{StaticResource SubTextBrush}" />
-                            <TextBlock Text="{Binding BridgePort}" Foreground="{StaticResource TextBrush}" FontWeight="SemiBold" />
+                            <TextBlock Text="Antigravity CLI: " Foreground="{StaticResource SubTextBrush}" FontSize="12"/>
+                            <TextBlock Text="{Binding CliStateText}" Foreground="{StaticResource AccentBrush}" FontWeight="SemiBold" FontSize="12"/>
                         </StackPanel>
                     </Border>
-                    <Border Background="#1E1E2E" Padding="10,4" CornerRadius="4">
-                        <TextBlock Text="{Binding AppVersionText}" Foreground="{StaticResource SubTextBrush}" FontSize="12" />
+                    <Border Background="#1E1E2E" Padding="10,4" CornerRadius="4" Margin="0,0,8,0">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="Version: " Foreground="{StaticResource SubTextBrush}" FontSize="12"/>
+                            <TextBlock Text="{Binding CliVersionText}" Foreground="{StaticResource TextBrush}" FontWeight="SemiBold" FontSize="12"/>
+                        </StackPanel>
                     </Border>
+                    <Border Background="#1E1E2E" Padding="10,4" CornerRadius="4" Margin="0,0,8,0">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="Auth: " Foreground="{StaticResource SubTextBrush}" FontSize="12"/>
+                            <TextBlock Text="{Binding AuthStateText}" Foreground="{StaticResource AccentBrush}" FontWeight="SemiBold" FontSize="12"/>
+                        </StackPanel>
+                    </Border>
+                    
+                    <Button Content="INSTALL ANTIGRAVITY CLI" 
+                            Command="{Binding InstallCliCommand}" 
+                            Visibility="{Binding IsCliMissing, Converter={StaticResource BoolToVis}}" 
+                            Background="{StaticResource WarningBrush}" 
+                            Foreground="#1E1E2E" 
+                            FontWeight="Bold" 
+                            Padding="10,4" 
+                            Margin="4,0,0,0" />
+                    
+                    <Button Content="AUTHENTICATE" 
+                            Command="{Binding AuthenticateCommand}" 
+                            Visibility="{Binding IsAuthRequired, Converter={StaticResource BoolToVis}}" 
+                            Background="{StaticResource PrimaryBrush}" 
+                            Foreground="#1E1E2E" 
+                            FontWeight="Bold" 
+                            Padding="10,4" 
+                            Margin="4,0,0,0" />
                 </StackPanel>
             </Grid>
         </Border>

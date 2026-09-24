@@ -12,15 +12,16 @@ public partial class App : Application
         ILogService logService = new LogService();
         IConfigService configService = new ConfigService(logService);
         ITaskService taskService = new TaskService(logService);
+        IAntigravityEnvironmentService environmentService = new AntigravityEnvironmentService(logService);
 
         var config = configService.LoadConfig();
         ICodingAgentRunner antigravityRunner = new AntigravityRunner(
             logService, 
-            config.AntigravityTimeoutMinutes, 
-            config.AutoApprovePermissions
+            environmentService,
+            config.AntigravityTimeoutMinutes
         );
 
-        var viewModel = new MainViewModel(configService, logService, taskService, antigravityRunner);
+        var viewModel = new MainViewModel(configService, logService, taskService, environmentService, antigravityRunner);
 
         var mainWindow = new MainWindow
         {

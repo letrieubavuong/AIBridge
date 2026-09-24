@@ -8,67 +8,24 @@ namespace AIBridge.Services;
 public class AntigravityRunner : ICodingAgentRunner
 {
     private readonly ILogService _logService;
+    private readonly IAntigravityEnvironmentService _environmentService;
     private readonly int _timeoutMinutes;
-    private readonly bool _autoApprovePermissions;
 
     public string Name => "Antigravity";
 
-    public AntigravityRunner(ILogService logService, int timeoutMinutes = 30, bool autoApprovePermissions = false)
+    public AntigravityRunner(
+        ILogService logService, 
+        IAntigravityEnvironmentService environmentService, 
+        int timeoutMinutes = 30)
     {
         _logService = logService ?? throw new ArgumentNullException(nameof(logService));
+        _environmentService = environmentService ?? throw new ArgumentNullException(nameof(environmentService));
         _timeoutMinutes = timeoutMinutes > 0 ? timeoutMinutes : 30;
-        _autoApprovePermissions = autoApprovePermissions;
     }
 
     public string ResolveCliPath(string? configuredPath)
     {
-        // 1. Configured path if valid file
-        if (!string.IsNullOrWhiteSpace(configuredPath) && File.Exists(configuredPath))
-        {
-            return Path.GetFullPath(configuredPath);
-        }
-
-        // 2. User-local default path: %LOCALAPPDATA%\agy\bin\agy.exe
-        var localAppDataPath = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
-        var defaultPath = Path.Combine(localAppDataPath, "agy", "bin", "agy.exe");
-        if (File.Exists(defaultPath))
-        {
-            return defaultPath;
-        }
-
-        // 3. Search PATH environment variable
-        var pathEnv = Environment.GetEnvironmentVariable("PATH");
-        if (!string.IsNullOrWhiteSpace(pathEnv))
-        {
-            var paths = pathEnv.Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries);
-            foreach (var pathDir in paths)
-            {
-                try
-                {
-                    var exePath = Path.Combine(pathDir, "agy.exe");
-                    if (File.Exists(exePath))
-                    {
-                        return exePath;
-                    }
-                    var cmdPath = Path.Combine(pathDir, "agy.cmd");
-                    if (File.Exists(cmdPath))
-                    {
-                        return cmdPath;
-                    }
-                    var batPath = Path.Combine(pathDir, "agy.bat");
-                    if (File.Exists(batPath))
-                    {
-                        return batPath;
-                    }
-                }
-                catch
-                {
-                    // Ignore invalid path format entries in PATH
-                }
-            }
-        }
-
-        return string.Empty;
+        return _environmentService.ResolveCliExecutable(configuredPath);
     }
 
     public async Task<(bool IsValid, string Message)> ValidateConfigurationAsync(string agentPath)
@@ -100,9 +57,7 @@ public class AntigravityRunner : ICodingAgentRunner
             var stderrTask = process.StandardError.ReadToEndAsync();
 
             using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
-            var waitForExitTask = process.WaitForExitAsync(cts.Token);
-
-            await Task.WhenAll(waitForExitTask, stdoutTask, stderrTask);
+            await process.WaitForExitAsync(cts.Token);
 
             var versionOutput = (await stdoutTask).Trim();
             if (string.IsNullOrWhiteSpace(versionOutput))
@@ -196,7 +151,9 @@ public class AntigravityRunner : ICodingAgentRunner
         }
 
         var normalizedWorkspace = Path.GetFullPath(task.WorkspacePath);
-        var cliPath = ResolveCliPath(null);
+        
+        // Use ONE authoritative CLI path resolution using task configured path or environment service
+        var cliPath = ResolveCliPath(task.ConfiguredAgentPath);
 
         if (string.IsNullOrWhiteSpace(cliPath))
         {
@@ -207,7 +164,7 @@ public class AntigravityRunner : ICodingAgentRunner
                 ExitCode = -1,
                 StartedAt = startTime,
                 CompletedAt = DateTime.Now,
-                ErrorMessage = "Antigravity CLI executable ('agy.exe') not found in %LOCALAPPDATA%\\agy\\bin or system PATH."
+                ErrorMessage = "Antigravity CLI executable ('agy.exe') not found in configured path, %LOCALAPPDATA%\\agy\\bin, or system PATH."
             };
         }
 
@@ -226,11 +183,7 @@ public class AntigravityRunner : ICodingAgentRunner
             WorkingDirectory = normalizedWorkspace
         };
 
-        if (_autoApprovePermissions)
-        {
-            startInfo.ArgumentList.Add("--dangerously-skip-permissions");
-        }
-
+        // Pass prompt with -p flag. NO --dangerously-skip-permissions!
         startInfo.ArgumentList.Add("-p");
         startInfo.ArgumentList.Add(task.Prompt);
 
@@ -279,7 +232,7 @@ public class AntigravityRunner : ICodingAgentRunner
             var combinedOutput = stdOut + "\n" + stdErr;
             if (IsPermissionDenied(combinedOutput))
             {
-                var permErrorMsg = "Antigravity requires tool permission that cannot be interactively approved in headless mode. Review ~/.gemini/antigravity-cli/settings.json or grant required permissions.";
+                var permErrorMsg = "PERMISSION_REQUIRED: Antigravity requires tool permission that cannot be interactively approved in headless mode. Review ~/.gemini/antigravity-cli/settings.json or grant required permissions.";
                 _logService.LogError(permErrorMsg);
                 return new AgentResult
                 {

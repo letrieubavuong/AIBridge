@@ -11,7 +11,9 @@ public class AgentTask : ObservableObject
     public string Id { get; set; } = Guid.NewGuid().ToString("N");
     public string Prompt { get; set; } = string.Empty;
     public string WorkspacePath { get; set; } = string.Empty;
+    public string? ConfiguredAgentPath { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.Now;
+
 
     public AgentTaskStatus Status
     {

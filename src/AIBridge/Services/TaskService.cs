@@ -51,18 +51,20 @@ public class TaskService : ITaskService
         }
     }
 
-    public AgentTask CreateTask(string prompt, string workspacePath)
+    public AgentTask CreateTask(string prompt, string workspacePath, string? configuredAgentPath = null)
     {
         var task = new AgentTask
         {
             Prompt = prompt,
             WorkspacePath = workspacePath,
+            ConfiguredAgentPath = configuredAgentPath,
             Status = AgentTaskStatus.Pending,
             CreatedAt = DateTime.Now
         };
         _logService.LogInfo($"New agent task created with ID: {task.Id} (Status: Pending)");
         return task;
     }
+
 
     public async Task<AgentResult> SubmitTaskAsync(AgentTask task, ICodingAgentRunner runner, CancellationToken cancellationToken = default)
     {

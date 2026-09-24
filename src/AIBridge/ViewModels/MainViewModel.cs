@@ -1,7 +1,7 @@
 using System.Collections.ObjectModel;
 using System.IO;
 using System.Reflection;
-
+using System.Windows;
 using System.Windows.Input;
 using AIBridge.Infrastructure;
 using AIBridge.Models;
@@ -15,6 +15,7 @@ public class MainViewModel : ObservableObject
     private readonly IConfigService _configService;
     private readonly ILogService _logService;
     private readonly ITaskService _taskService;
+    private readonly IAntigravityEnvironmentService _environmentService;
     private readonly ICodingAgentRunner _antigravityRunner;
 
     private AppConfig _config = new();
@@ -29,6 +30,13 @@ public class MainViewModel : ObservableObject
     private string _currentTaskStarted = "-";
     private string _currentTaskCompleted = "-";
     private bool _isTaskRunning;
+
+    // Environment Setup Section Properties
+    private string _cliStateText = "Checking...";
+    private string _cliVersionText = "-";
+    private string _authStateText = "Unknown";
+    private bool _isCliMissing;
+    private bool _isAuthRequired;
 
     public string AppVersionText
     {
@@ -53,6 +61,7 @@ public class MainViewModel : ObservableObject
                 _config.AntigravityPath = value;
                 AntigravityStatus = "Unknown";
                 SaveConfiguration();
+                _ = RefreshEnvironmentAsync();
             }
         }
     }
@@ -119,6 +128,37 @@ public class MainViewModel : ObservableObject
         set => SetProperty(ref _isTaskRunning, value);
     }
 
+    // Environment Setup Card Properties
+    public string CliStateText
+    {
+        get => _cliStateText;
+        set => SetProperty(ref _cliStateText, value);
+    }
+
+    public string CliVersionText
+    {
+        get => _cliVersionText;
+        set => SetProperty(ref _cliVersionText, value);
+    }
+
+    public string AuthStateText
+    {
+        get => _authStateText;
+        set => SetProperty(ref _authStateText, value);
+    }
+
+    public bool IsCliMissing
+    {
+        get => _isCliMissing;
+        set => SetProperty(ref _isCliMissing, value);
+    }
+
+    public bool IsAuthRequired
+    {
+        get => _isAuthRequired;
+        set => SetProperty(ref _isAuthRequired, value);
+    }
+
     public ObservableCollection<LogEntry> LogEntries => _logService.LogEntries;
 
     // Commands
@@ -128,16 +168,21 @@ public class MainViewModel : ObservableObject
     public ICommand ValidateWorkspaceCommand { get; }
     public ICommand SubmitTaskCommand { get; }
     public ICommand CancelTaskCommand { get; }
+    public ICommand InstallCliCommand { get; }
+    public ICommand CheckAuthCommand { get; }
+    public ICommand AuthenticateCommand { get; }
 
     public MainViewModel(
         IConfigService configService,
         ILogService logService,
         ITaskService taskService,
+        IAntigravityEnvironmentService environmentService,
         ICodingAgentRunner antigravityRunner)
     {
         _configService = configService ?? throw new ArgumentNullException(nameof(configService));
         _logService = logService ?? throw new ArgumentNullException(nameof(logService));
         _taskService = taskService ?? throw new ArgumentNullException(nameof(taskService));
+        _environmentService = environmentService ?? throw new ArgumentNullException(nameof(environmentService));
         _antigravityRunner = antigravityRunner ?? throw new ArgumentNullException(nameof(antigravityRunner));
 
         BrowseAntigravityCommand = new RelayCommand(ExecuteBrowseAntigravity);
@@ -146,9 +191,13 @@ public class MainViewModel : ObservableObject
         ValidateWorkspaceCommand = new AsyncRelayCommand(ExecuteValidateWorkspaceAsync);
         SubmitTaskCommand = new AsyncRelayCommand(ExecuteSubmitTaskAsync, CanSubmitTask);
         CancelTaskCommand = new RelayCommand(ExecuteCancelTask, CanCancelTask);
+        InstallCliCommand = new AsyncRelayCommand(ExecuteInstallCliAsync);
+        CheckAuthCommand = new AsyncRelayCommand(ExecuteCheckAuthAsync);
+        AuthenticateCommand = new AsyncRelayCommand(ExecuteAuthenticateAsync);
 
         _taskService.CurrentTaskChanged += OnCurrentTaskChanged;
         _taskService.TaskUpdated += OnTaskUpdated;
+        _environmentService.EnvironmentInfoChanged += OnEnvironmentInfoChanged;
 
         InitializeViewModel();
     }
@@ -165,12 +214,58 @@ public class MainViewModel : ObservableObject
 
         _logService.LogInfo("AIBridge Initialization Complete.");
 
-        _ = ExecuteTestAntigravityAsync();
+        _ = RefreshEnvironmentAsync();
 
         if (!string.IsNullOrWhiteSpace(_workspacePath))
         {
             _ = ExecuteValidateWorkspaceAsync();
         }
+    }
+
+    private async Task RefreshEnvironmentAsync()
+    {
+        CliStateText = "Checking...";
+        AuthStateText = "Checking...";
+        AntigravityStatus = "Checking...";
+
+        var info = await _environmentService.DetectAndVerifyEnvironmentAsync(AntigravityPath);
+        UpdateEnvironmentUI(info);
+    }
+
+    private void UpdateEnvironmentUI(AntigravityEnvironmentInfo info)
+    {
+        CliStateText = info.InstallationState switch
+        {
+            CliInstallationState.Ready => "READY",
+            CliInstallationState.NotInstalled => "NOT INSTALLED",
+            CliInstallationState.Error => "ERROR",
+            _ => "CHECKING..."
+        };
+
+        CliVersionText = !string.IsNullOrWhiteSpace(info.Version) ? info.Version : "-";
+        IsCliMissing = info.InstallationState == CliInstallationState.NotInstalled;
+
+        AuthStateText = info.AuthState switch
+        {
+            CliAuthState.Ready => "READY",
+            CliAuthState.Required => "REQUIRED",
+            CliAuthState.Error => "ERROR",
+            _ => "UNKNOWN"
+        };
+
+        IsAuthRequired = info.AuthState == CliAuthState.Required;
+
+        AntigravityStatus = info.InstallationState == CliInstallationState.Ready ? "Ready" : "Not Found";
+        if (!string.IsNullOrWhiteSpace(info.ExecutablePath) && string.IsNullOrWhiteSpace(AntigravityPath))
+        {
+            _antigravityPath = info.ExecutablePath;
+            OnPropertyChanged(nameof(AntigravityPath));
+        }
+    }
+
+    private void OnEnvironmentInfoChanged(AntigravityEnvironmentInfo info)
+    {
+        UpdateEnvironmentUI(info);
     }
 
     private void SaveConfiguration()
@@ -198,7 +293,6 @@ public class MainViewModel : ObservableObject
             {
                 AntigravityPath = dialog.FileName;
                 _logService.LogInfo($"Selected Antigravity CLI path: {AntigravityPath}");
-                _ = ExecuteTestAntigravityAsync();
             }
         }
         catch (Exception ex)
@@ -210,10 +304,48 @@ public class MainViewModel : ObservableObject
     private async Task ExecuteTestAntigravityAsync()
     {
         _logService.LogInfo("Starting Antigravity CLI validation and health check...");
-        AntigravityStatus = "Checking...";
-        var (isValid, message) = await _antigravityRunner.ValidateConfigurationAsync(AntigravityPath);
-        AntigravityStatus = isValid ? "Ready" : "Not Found";
-        _logService.LogInfo($"Antigravity status updated to: {AntigravityStatus} ({message})");
+        await RefreshEnvironmentAsync();
+    }
+
+    private async Task ExecuteInstallCliAsync()
+    {
+        var result = MessageBox.Show(
+            "Do you want to install official Antigravity CLI ('agy') now?",
+            "Install Confirmation",
+            MessageBoxButton.YesNo,
+            MessageBoxImage.Question
+        );
+
+        if (result != MessageBoxResult.Yes)
+        {
+            _logService.LogInfo("Antigravity CLI installation cancelled by user.");
+            return;
+        }
+
+        _logService.LogInfo("User confirmed installation. Starting installer...");
+        CliStateText = "Installing...";
+        bool success = await _environmentService.InstallCliAsync();
+        if (success)
+        {
+            _logService.LogInfo("Antigravity CLI installed and verified successfully.");
+        }
+        else
+        {
+            _logService.LogWarning("Antigravity CLI installation did not complete or failed verification.");
+        }
+        await RefreshEnvironmentAsync();
+    }
+
+    private async Task ExecuteCheckAuthAsync()
+    {
+        AuthStateText = "Checking...";
+        var authState = await _environmentService.CheckAuthenticationAsync(AntigravityPath);
+        AuthStateText = authState == CliAuthState.Ready ? "READY" : "REQUIRED";
+    }
+
+    private async Task ExecuteAuthenticateAsync()
+    {
+        await _environmentService.LaunchAuthenticationSetupAsync(AntigravityPath);
     }
 
     private void ExecuteBrowseWorkspace()
@@ -276,7 +408,7 @@ public class MainViewModel : ObservableObject
                 return;
             }
 
-            var task = _taskService.CreateTask(PromptText, WorkspacePath);
+            var task = _taskService.CreateTask(PromptText, WorkspacePath, AntigravityPath);
 
             _logService.LogInfo($"Submitting task {task.Id} for real execution via Antigravity CLI...");
 
