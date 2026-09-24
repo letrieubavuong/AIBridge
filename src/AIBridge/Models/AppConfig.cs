@@ -29,4 +29,9 @@ public class AppConfig
 
     [JsonConverter(typeof(SafeAutomationModeConverter))]
     public AutomationMode AutomationMode { get; set; } = AutomationMode.Manual;
+
+    // Coding Agent Configuration (Phase 07)
+    public string CodingAgentProvider { get; set; } = "antigravity";
+    public int CodingAgentTimeoutSeconds { get; set; } = 600;
+    public bool CodingAgentEnabled { get; set; } = true;
 }

@@ -29,6 +29,9 @@ public class BridgeServer : IBridgeServer
     private readonly IAIBrainService _brainService;
     private readonly IAIBrainProviderRegistry _brainProviderRegistry;
     private readonly IPlanningService _planningService;
+    private readonly IExecutionPromptService _executionPromptService;
+    private readonly ICodingAgentRegistry _codingAgentRegistry;
+    private readonly ICodingAgentService _codingAgentService;
 
     private WebApplication? _app;
     private BridgeStatus _status = BridgeStatus.Stopped;
@@ -82,7 +85,10 @@ public class BridgeServer : IBridgeServer
         IGitEvidenceService? gitEvidenceService = null,
         IAIBrainService? brainService = null,
         IAIBrainProviderRegistry? brainProviderRegistry = null,
-        IPlanningService? planningService = null)
+        IPlanningService? planningService = null,
+        IExecutionPromptService? executionPromptService = null,
+        ICodingAgentRegistry? codingAgentRegistry = null,
+        ICodingAgentService? codingAgentService = null)
     {
         _configService = configService ?? throw new ArgumentNullException(nameof(configService));
         _logService = logService ?? throw new ArgumentNullException(nameof(logService));
@@ -107,7 +113,25 @@ public class BridgeServer : IBridgeServer
         }
 
         _brainService = brainService ?? new AIBrainService(_logService, _configService, _brainProviderRegistry);
-        _planningService = planningService ?? new PlanningService(_brainService, new PlanValidator(), new FileProjectPlanStore());
+        var planStore = new FileProjectPlanStore();
+        var planValidator = new PlanValidator();
+        _planningService = planningService ?? new PlanningService(_brainService, planValidator, planStore);
+
+        var promptValidator = new PromptValidator();
+        _executionPromptService = executionPromptService ?? new ExecutionPromptService(promptValidator, _gitEvidenceService, _configService, _logService);
+
+        if (codingAgentRegistry == null)
+        {
+            var agentReg = new CodingAgentRegistry();
+            agentReg.RegisterAgent(new AntigravityCodingAgent(_taskService, _antigravityRunner, _environmentService));
+            _codingAgentRegistry = agentReg;
+        }
+        else
+        {
+            _codingAgentRegistry = codingAgentRegistry;
+        }
+
+        _codingAgentService = codingAgentService ?? new CodingAgentService(_codingAgentRegistry, _taskService, planStore, promptValidator, _gitEvidenceService, _taskRegistry, _logService);
     }
 
     public async Task<bool> StartAsync()
@@ -419,7 +443,7 @@ public class BridgeServer : IBridgeServer
                 return Results.Ok(BuildTaskStatusResponse(taskFromService, null));
             }
 
-            return Results.Ok(BuildTaskStatusResponse(currentRecord.Task, currentRecord.Result));
+            return Results.Ok(BuildTaskStatusResponse(currentRecord.Task!, currentRecord.Result));
         });
 
         // GET /api/tasks/{taskId}
@@ -435,7 +459,7 @@ public class BridgeServer : IBridgeServer
                 }, statusCode: StatusCodes.Status404NotFound);
             }
 
-            return Results.Ok(BuildTaskStatusResponse(record.Task, record.Result));
+            return Results.Ok(BuildTaskStatusResponse(record.Task!, record.Result));
         });
 
         // POST /api/tasks/{taskId}/cancel
@@ -878,6 +902,231 @@ public class BridgeServer : IBridgeServer
             }
             var phaseProgress = _planningService.CalculatePhaseProgress(phase);
             return Results.Ok(phaseProgress);
+        });
+
+        // --- PHASE 07 CODING AGENT & PROMPT ENDPOINTS ---
+
+        // GET /api/coding-agents
+        app.MapGet("/api/coding-agents", (HttpContext context) =>
+        {
+            var config = _configService.LoadConfig();
+            var token = ExtractToken(context.Request);
+            if (!ValidateToken(token, config.ApiToken))
+            {
+                return Results.Json(new ErrorResponse { Error = "UNAUTHORIZED", Message = "Invalid or missing Bearer token." }, statusCode: StatusCodes.Status401Unauthorized);
+            }
+
+            return Results.Ok(_codingAgentRegistry.GetAgents());
+        });
+
+        // GET /api/coding-agents/status
+        app.MapGet("/api/coding-agents/status", (HttpContext context) =>
+        {
+            var config = _configService.LoadConfig();
+            var token = ExtractToken(context.Request);
+            if (!ValidateToken(token, config.ApiToken))
+            {
+                return Results.Json(new ErrorResponse { Error = "UNAUTHORIZED", Message = "Invalid or missing Bearer token." }, statusCode: StatusCodes.Status401Unauthorized);
+            }
+
+            var selected = _codingAgentRegistry.GetSelectedAgent();
+            var currentExec = _codingAgentService.GetCurrentExecution();
+
+            return Results.Ok(new
+            {
+                selectedAgent = selected.Descriptor,
+                isBusy = currentExec != null,
+                currentExecution = currentExec
+            });
+        });
+
+        // GET /api/projects/{projectId}/dispatchable-tasks
+        app.MapGet("/api/projects/{projectId}/dispatchable-tasks", async (string projectId, HttpContext context) =>
+        {
+            var config = _configService.LoadConfig();
+            var token = ExtractToken(context.Request);
+            if (!ValidateToken(token, config.ApiToken))
+            {
+                return Results.Json(new ErrorResponse { Error = "UNAUTHORIZED", Message = "Invalid or missing Bearer token." }, statusCode: StatusCodes.Status401Unauthorized);
+            }
+
+            var plan = await _planningService.GetPlanAsync(projectId, context.RequestAborted);
+            if (plan == null)
+            {
+                return Results.Json(new ErrorResponse { Error = "PLAN_NOT_FOUND", Message = $"Project '{projectId}' not found." }, statusCode: StatusCodes.Status404NotFound);
+            }
+
+            var tasks = _codingAgentService.GetDispatchableTasks(plan);
+            return Results.Ok(tasks);
+        });
+
+        // POST /api/projects/{projectId}/phases/{phaseId}/tasks/{taskId}/prepare
+        app.MapPost("/api/projects/{projectId}/phases/{phaseId}/tasks/{taskId}/prepare", async (string projectId, string phaseId, string taskId, HttpContext context) =>
+        {
+            var config = _configService.LoadConfig();
+            var token = ExtractToken(context.Request);
+            if (!ValidateToken(token, config.ApiToken))
+            {
+                return Results.Json(new ErrorResponse { Error = "UNAUTHORIZED", Message = "Invalid or missing Bearer token." }, statusCode: StatusCodes.Status401Unauthorized);
+            }
+
+            var plan = await _planningService.GetPlanAsync(projectId, context.RequestAborted);
+            if (plan == null)
+            {
+                return Results.Json(new ErrorResponse { Error = "PLAN_NOT_FOUND", Message = $"Project '{projectId}' not found." }, statusCode: StatusCodes.Status404NotFound);
+            }
+
+            PrepareExecutionRequest? reqBody = null;
+            try
+            {
+                if (context.Request.HasJsonContentType())
+                {
+                    reqBody = await context.Request.ReadFromJsonAsync<PrepareExecutionRequest>(JsonOptions);
+                }
+            }
+            catch { }
+
+            try
+            {
+                var package = await _executionPromptService.PreparePromptPackageAsync(
+                    plan,
+                    phaseId,
+                    taskId,
+                    externalInstructions: reqBody?.Instructions ?? string.Empty,
+                    verificationInstructions: reqBody?.VerificationInstructions,
+                    commitInstructions: reqBody?.CommitInstructions ?? string.Empty,
+                    workspacePath: config.WorkspacePath,
+                    generatedBy: reqBody?.GeneratedBy ?? "ChatGPTWeb",
+                    cancellationToken: context.RequestAborted);
+
+                return Results.Ok(package);
+            }
+            catch (Exception ex)
+            {
+                return Results.Json(new ErrorResponse { Error = "PREPARATION_FAILED", Message = ex.Message }, statusCode: StatusCodes.Status400BadRequest);
+            }
+        });
+
+        // POST /api/projects/{projectId}/phases/{phaseId}/tasks/{taskId}/dispatch
+        app.MapPost("/api/projects/{projectId}/phases/{phaseId}/tasks/{taskId}/dispatch", async (string projectId, string phaseId, string taskId, HttpContext context) =>
+        {
+            var config = _configService.LoadConfig();
+            var token = ExtractToken(context.Request);
+            if (!ValidateToken(token, config.ApiToken))
+            {
+                return Results.Json(new ErrorResponse { Error = "UNAUTHORIZED", Message = "Invalid or missing Bearer token." }, statusCode: StatusCodes.Status401Unauthorized);
+            }
+
+            var plan = await _planningService.GetPlanAsync(projectId, context.RequestAborted);
+            if (plan == null)
+            {
+                return Results.Json(new ErrorResponse { Error = "PLAN_NOT_FOUND", Message = $"Project '{projectId}' not found." }, statusCode: StatusCodes.Status404NotFound);
+            }
+
+            DispatchRequest? reqBody = null;
+            try
+            {
+                if (context.Request.HasJsonContentType())
+                {
+                    reqBody = await context.Request.ReadFromJsonAsync<DispatchRequest>(JsonOptions);
+                }
+            }
+            catch { }
+
+            ExecutionPromptPackage? promptPackage = null;
+            if (reqBody != null && !string.IsNullOrWhiteSpace(reqBody.PromptId))
+            {
+                promptPackage = _executionPromptService.GetPromptPackage(reqBody.PromptId);
+            }
+
+            if (promptPackage == null)
+            {
+                promptPackage = await _executionPromptService.PreparePromptPackageAsync(
+                    plan, phaseId, taskId, workspacePath: config.WorkspacePath, cancellationToken: context.RequestAborted);
+            }
+
+            bool confirmHuman = reqBody?.ConfirmHumanGate ?? false;
+            int timeoutSec = reqBody?.TimeoutSeconds > 0 ? reqBody.TimeoutSeconds : config.CodingAgentTimeoutSeconds;
+
+            var result = await _codingAgentService.DispatchTaskAsync(
+                plan, phaseId, taskId, promptPackage, config.WorkspacePath, confirmHumanGate: confirmHuman, timeoutSeconds: timeoutSec, cancellationToken: context.RequestAborted);
+
+            if (!result.Success && result.ErrorCode == CodingAgentErrorCode.HumanApprovalRequired)
+            {
+                return Results.Json(result, statusCode: StatusCodes.Status403Forbidden);
+            }
+            else if (!result.Success && result.ErrorCode == CodingAgentErrorCode.ConcurrencyConflict)
+            {
+                return Results.Json(result, statusCode: StatusCodes.Status409Conflict);
+            }
+
+            return Results.Ok(result);
+        });
+
+        // GET /api/executions/current
+        app.MapGet("/api/executions/current", (HttpContext context) =>
+        {
+            var config = _configService.LoadConfig();
+            var token = ExtractToken(context.Request);
+            if (!ValidateToken(token, config.ApiToken))
+            {
+                return Results.Json(new ErrorResponse { Error = "UNAUTHORIZED", Message = "Invalid or missing Bearer token." }, statusCode: StatusCodes.Status401Unauthorized);
+            }
+
+            var current = _codingAgentService.GetCurrentExecution();
+            return Results.Ok(current);
+        });
+
+        // GET /api/executions/{executionId}
+        app.MapGet("/api/executions/{executionId}", (string executionId, HttpContext context) =>
+        {
+            var config = _configService.LoadConfig();
+            var token = ExtractToken(context.Request);
+            if (!ValidateToken(token, config.ApiToken))
+            {
+                return Results.Json(new ErrorResponse { Error = "UNAUTHORIZED", Message = "Invalid or missing Bearer token." }, statusCode: StatusCodes.Status401Unauthorized);
+            }
+
+            var rec = _codingAgentService.GetExecutionHistory().FirstOrDefault(e => string.Equals(e.ExecutionId, executionId, StringComparison.OrdinalIgnoreCase));
+            if (rec == null)
+            {
+                return Results.Json(new ErrorResponse { Error = "EXECUTION_NOT_FOUND", Message = $"Execution '{executionId}' not found." }, statusCode: StatusCodes.Status404NotFound);
+            }
+
+            return Results.Ok(rec);
+        });
+
+        // GET /api/executions/{executionId}/review-package
+        app.MapGet("/api/executions/{executionId}/review-package", (string executionId, HttpContext context) =>
+        {
+            var config = _configService.LoadConfig();
+            var token = ExtractToken(context.Request);
+            if (!ValidateToken(token, config.ApiToken))
+            {
+                return Results.Json(new ErrorResponse { Error = "UNAUTHORIZED", Message = "Invalid or missing Bearer token." }, statusCode: StatusCodes.Status401Unauthorized);
+            }
+
+            var reviewPkg = _codingAgentService.GetReviewPackage(executionId);
+            if (reviewPkg == null)
+            {
+                return Results.Json(new ErrorResponse { Error = "REVIEW_PACKAGE_NOT_FOUND", Message = $"Execution review package '{executionId}' not found." }, statusCode: StatusCodes.Status404NotFound);
+            }
+
+            return Results.Ok(reviewPkg);
+        });
+
+        // POST /api/executions/{executionId}/cancel
+        app.MapPost("/api/executions/{executionId}/cancel", (string executionId, HttpContext context) =>
+        {
+            var config = _configService.LoadConfig();
+            var token = ExtractToken(context.Request);
+            if (!ValidateToken(token, config.ApiToken))
+            {
+                return Results.Json(new ErrorResponse { Error = "UNAUTHORIZED", Message = "Invalid or missing Bearer token." }, statusCode: StatusCodes.Status401Unauthorized);
+            }
+
+            _codingAgentService.CancelCurrentExecution();
+            return Results.Ok(new { status = "cancellation_requested", executionId });
         });
     }
 

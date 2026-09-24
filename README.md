@@ -37,9 +37,52 @@ HUMAN APPROVAL GATE (Explicit Human Approval Required — 0 Tasks Executed in Ph
 
 ## Current Status
 
-`Phase 06 — AI Planning / Phase & Task Planning` (Completed)
+`Phase 07 — ChatGPT Web Brain & Coding-Agent Dispatch Foundation` (Completed)
 
-Phase 06 implements the planning layer that transforms user ideas into structured, reviewable, versioned, and persistable development plans with graph dependency validation, atomic safe file persistence, plan version history, explicit human approval gates, plan-backed dynamic progress tracking, REST planning endpoints, and WPF planning UI.
+Phase 07 implements the execution-preparation and coding-agent dispatch layer. ChatGPT Web is the default AI Brain (no paid model API keys required). External instructions are packaged into canonical `ExecutionPromptPackage` instances, validated against stored authoritative plan criteria, sanitized, hashed, and dispatched via provider-independent `ICodingAgentService` and `AntigravityCodingAgent` to existing process runners and Git evidence tools. Successful agent execution transitions tasks to `Reviewing` (NOT `Passed`).
+
+---
+
+## Architecture
+
+```text
+USER
+  │
+  ▼
+CHATGPT WEB
+= DEFAULT AI BRAIN
+  │
+  │ Plugin / MCP tools
+  ▼
+AIBridge Desktop
+= LOCAL EXECUTION / STATE / EVIDENCE BRIDGE
+  │
+  ▼
+Coding Agent
+  │
+  └── Antigravity now
+  └── other agents in future
+  │
+  ▼
+Workspace
+  │
+  ▼
+Git / GitHub
+  │
+  ▼
+Evidence
+  │
+  └──────────────────────► ChatGPT Web
+```
+
+### Critical Architecture Principles
+
+* **Default AI Brain**: ChatGPT Web is the primary reasoning/orchestration brain. AIBridge is the local execution, state, and evidence bridge.
+* **No Model API Key Required**: Default workflow requires zero OpenAI/Claude/Gemini API keys.
+* **IAIBrain Extension Architecture Preserved**: Phase 05 `IAIBrain` interface and providers remain fully intact as an optional extension point for future API integrations.
+* **No Web Scraping or Session Hacks**: AIBridge does not log in to ChatGPT or scrape web sessions. Integrations use standard tool protocols.
+* **AGENT SUCCESS != TASK PASS**: When an agent completes with ExitCode = 0, AIBridge marks the task as `Reviewing`. The task becomes `Passed` only after external Brain review of the `ExecutionReviewPackage` and Git evidence.
+* **Security & Workspace Isolation**: External commands specify ProjectId/PhaseId/TaskId and instructions. Workspace paths are resolved from trusted local AIBridge configuration; no arbitrary shell execution endpoints are exposed.
 
 ---
 
@@ -78,31 +121,15 @@ Phase 06 implements the planning layer that transforms user ideas into structure
 | `GET` | `/api/projects/{id}/versions/{version}` | Yes | Retrieve specific historical plan version |
 | `GET` | `/api/projects/{id}/progress` | Yes | Get plan-backed project progress & weighted completion percentage |
 | `GET` | `/api/projects/{id}/phases/{phaseId}/progress` | Yes | Get phase progress derived from logical tasks |
-
-> [!NOTE]
-> **Phase 06 creates plans. Phase 06 does NOT execute generated tasks.** Plan approval transitions status to `Approved` but does **NOT** dispatch Antigravity CLI executions.
-
----
-
-## Planning Domain & Validation Architecture
-
-### Planning Domain Models
-* **`ProjectPlan`**: Contains `ProjectId`, `Name`, `Description`, `Goal`, `Status` (`Draft`, `AwaitingApproval`, `Approved`, `Active`, `Completed`, `Blocked`, `Archived`), `Version`, `Phases[]`, `Constraints[]`, `Assumptions[]`, `AcceptanceCriteria[]`, `ApprovedAt`, `ApprovalReason`.
-* **`PhasePlan`**: Contains `PhaseId`, `PhaseNumber`, `Name`, `Objective`, `Status` (`PhaseStatus`), `Tasks[]`, `Dependencies[]`, `Weight` (default 1.0).
-* **`TaskPlan`**: Contains `TaskId`, `PhaseId`, `TaskNumber`, `Title`, `Objective`, `Status` (`TaskPlanStatus`), `Dependencies[]`, `AcceptanceCriteria[]`, `EstimatedComplexity`, `MaxRetries` (default 3), `RetryCount`. Initially set to `NotStarted`.
-
-### Plan Validation (`PlanValidator`)
-* **Structural Rules**: Requires non-empty Project ID & Name, at least one phase, unique Phase IDs & Task IDs across project, valid phase/task numbers, positive weights, MaxRetries >= 0.
-* **Dependency Graph Validation**: Validates that all referenced dependencies exist and executes a deterministic DFS algorithm to detect self-dependencies (A -> A) and dependency cycles (A -> B -> A or A -> B -> C -> A).
-
-### Safe Atomic Persistence (`FileProjectPlanStore`)
-* **Storage Path**: `%LOCALAPPDATA%\AIBridge\projects\<project-id>\plan.json` and `versions/plan-v{version}.json`.
-* **Atomic Safe Writes**: Writes to a temporary file (`plan.json.tmp_{guid}`) before atomic move/replace.
-* **Secret Redaction**: Redacts API keys, Bearer tokens, GitHub tokens before writing to disk.
-* **Fault Tolerance**: Corrupted disk JSON returns controlled errors without crashing AIBridge startup.
-
-### Human Gate Approval Policy
-* **Initial Plan Approval**: AI cannot self-approve generated plans. ALL automation modes (`Manual`, `PhaseAuto`, `FullAuto`) require explicit human approval in Phase 06 before a plan becomes `Approved`.
+| `GET` | `/api/coding-agents` | Yes | List registered coding agents (Antigravity) |
+| `GET` | `/api/coding-agents/status` | Yes | Get active coding agent status |
+| `POST` | `/api/projects/{id}/phases/{phaseId}/tasks/{taskId}/prepare` | Yes | Prepare canonical `ExecutionPromptPackage` (does not execute) |
+| `POST` | `/api/projects/{id}/phases/{phaseId}/tasks/{taskId}/dispatch` | Yes | Dispatch task execution to coding agent |
+| `GET` | `/api/projects/{id}/dispatchable-tasks` | Yes | List tasks ready for dispatch |
+| `GET` | `/api/executions/current` | Yes | Get active execution details |
+| `GET` | `/api/executions/{executionId}` | Yes | Get specific execution record |
+| `POST` | `/api/executions/{executionId}/cancel` | Yes | Cancel running coding agent execution |
+| `GET` | `/api/executions/{executionId}/review-package` | Yes | Get `ExecutionReviewPackage` for external Brain review |
 
 ---
 
@@ -127,7 +154,7 @@ dotnet build AIBridge.sln -c Release
 
 ## Test
 
-To run the automated test suite (including planning, validation, versioning, persistence, and security tests):
+To run the automated test suite (including planning, prompt packaging, agent registry, dispatch, and acceptance tests):
 
 ```bash
 dotnet test AIBridge.sln -c Release
@@ -155,6 +182,7 @@ Output directory: `src/AIBridge/bin/Release/net10.0-windows/win-x64/publish/`
 - [x] **Phase 04 - GitHub Integration & Evidence Layer** (Git CLI wrapper, Before/After snapshots, evidence API, safe push policy, secret redaction)
 - [x] **Phase 05 - Provider-Agnostic AI Brain Foundation** (IAIBrain contract, provider registry, MockBrainProvider, DPAPI secret store, Brain API, progress tracking)
 - [x] **Phase 06 - AI Planning / Phase & Task Planning** (Structured planning domain, PlanValidator, DFS cycle detection, atomic persistence, versioning, human gate approval, planning API, WPF planning UI)
-- [ ] **Phase 07 - Prompt Generation & Coding-Agent Dispatch Foundation**
-- [ ] **Phase 08 - AI Review / Retry Loop**
-- [ ] **Phase 09 - Autonomous Orchestration**
+- [x] **Phase 07 - ChatGPT Web Brain & Coding-Agent Dispatch Foundation** (ExecutionPromptPackage, ExecutionPromptService, ICodingAgent abstraction, AntigravityCodingAgent, dispatchability policy, ReviewPackage, WPF execution panel)
+- [ ] **Phase 08 - ChatGPT Web ↔ AIBridge MCP / Plugin Integration**
+- [ ] **Phase 09 - AI Review / Retry Loop & Autonomous Orchestration**
+

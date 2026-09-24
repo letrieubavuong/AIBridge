@@ -481,6 +481,45 @@ public class MainViewModel : ObservableObject
     public ICommand ApprovePlanCommand { get; }
     public ICommand RevisePlanCommand { get; }
 
+    // --- PHASE 07 CODING AGENT & PROMPT PROPERTIES ---
+    private readonly IExecutionPromptService _executionPromptService;
+    private readonly ICodingAgentRegistry _codingAgentRegistry;
+    private readonly ICodingAgentService _codingAgentService;
+
+    private ExecutionPromptPackage? _currentPromptPackage;
+    private string _promptPreviewText = "No prompt generated yet. Select a Task and click PREPARE EXECUTION.";
+    private object? _selectedNode;
+
+    public ExecutionPromptPackage? CurrentPromptPackage
+    {
+        get => _currentPromptPackage;
+        set
+        {
+            if (SetProperty(ref _currentPromptPackage, value))
+            {
+                OnPropertyChanged(nameof(HasPromptPackage));
+            }
+        }
+    }
+
+    public bool HasPromptPackage => CurrentPromptPackage != null;
+
+    public string PromptPreviewText
+    {
+        get => _promptPreviewText;
+        set => SetProperty(ref _promptPreviewText, value);
+    }
+
+    public object? SelectedNode
+    {
+        get => _selectedNode;
+        set => SetProperty(ref _selectedNode, value);
+    }
+
+    public ICommand GeneratePromptCommand { get; }
+    public ICommand DispatchTaskCommand { get; }
+    public ICommand CancelExecutionCommand { get; }
+
     public MainViewModel(
         IConfigService configService,
         ILogService logService,
@@ -494,7 +533,10 @@ public class MainViewModel : ObservableObject
         ITaskRegistry? taskRegistry = null,
         IAIBrainService? brainService = null,
         IAIBrainProviderRegistry? brainProviderRegistry = null,
-        IPlanningService? planningService = null)
+        IPlanningService? planningService = null,
+        IExecutionPromptService? executionPromptService = null,
+        ICodingAgentRegistry? codingAgentRegistry = null,
+        ICodingAgentService? codingAgentService = null)
     {
         _configService = configService ?? throw new ArgumentNullException(nameof(configService));
         _logService = logService ?? throw new ArgumentNullException(nameof(logService));
@@ -520,7 +562,25 @@ public class MainViewModel : ObservableObject
         }
 
         _brainService = brainService ?? new AIBrainService(_logService, _configService, _brainProviderRegistry);
-        _planningService = planningService ?? new PlanningService(_brainService, new PlanValidator(), new FileProjectPlanStore());
+        var planStore = new FileProjectPlanStore();
+        var planValidator = new PlanValidator();
+        _planningService = planningService ?? new PlanningService(_brainService, planValidator, planStore);
+
+        var promptValidator = new PromptValidator();
+        _executionPromptService = executionPromptService ?? new ExecutionPromptService(promptValidator, _gitEvidenceService, _configService, _logService);
+
+        if (codingAgentRegistry == null)
+        {
+            var agentReg = new CodingAgentRegistry();
+            agentReg.RegisterAgent(new AntigravityCodingAgent(_taskService, _antigravityRunner, _environmentService));
+            _codingAgentRegistry = agentReg;
+        }
+        else
+        {
+            _codingAgentRegistry = codingAgentRegistry;
+        }
+
+        _codingAgentService = codingAgentService ?? new CodingAgentService(_codingAgentRegistry, _taskService, planStore, promptValidator, _gitEvidenceService, _taskRegistry, _logService);
 
         BrowseAntigravityCommand = new RelayCommand(ExecuteBrowseAntigravity);
         TestAntigravityCommand = new AsyncRelayCommand(ExecuteTestAntigravityAsync);
@@ -548,6 +608,10 @@ public class MainViewModel : ObservableObject
         GeneratePlanCommand = new AsyncRelayCommand(ExecuteGeneratePlanAsync);
         ApprovePlanCommand = new AsyncRelayCommand(ExecuteApprovePlanAsync);
         RevisePlanCommand = new AsyncRelayCommand(ExecuteRevisePlanAsync);
+
+        GeneratePromptCommand = new AsyncRelayCommand(ExecuteGeneratePromptAsync);
+        DispatchTaskCommand = new AsyncRelayCommand(ExecuteDispatchTaskAsync);
+        CancelExecutionCommand = new RelayCommand(ExecuteCancelExecution);
 
         _taskService.CurrentTaskChanged += OnCurrentTaskChanged;
         _taskService.TaskUpdated += OnTaskUpdated;
@@ -1319,6 +1383,7 @@ public class MainViewModel : ObservableObject
 
     public void SelectNodeDetails(object node)
     {
+        SelectedNode = node;
         if (node is PhasePlan phase)
         {
             SelectedNodeDetailsText = $"PHASE {phase.PhaseNumber:D2}: {phase.Name}\n" +
@@ -1340,6 +1405,100 @@ public class MainViewModel : ObservableObject
                                      $"Dependencies: {(task.Dependencies.Count > 0 ? string.Join(", ", task.Dependencies) : "None")}\n" +
                                      $"Acceptance Criteria:\n - {string.Join("\n - ", task.AcceptanceCriteria)}";
         }
+    }
+
+    private async Task ExecuteGeneratePromptAsync()
+    {
+        if (CurrentProjectPlan == null || SelectedNode == null) return;
+        string phaseId = string.Empty;
+        string taskId = string.Empty;
+
+        if (SelectedNode is TaskPlan task)
+        {
+            taskId = task.TaskId;
+            phaseId = task.PhaseId;
+        }
+        else if (SelectedNode is PhasePlan phase && phase.Tasks.Count > 0)
+        {
+            phaseId = phase.PhaseId;
+            taskId = phase.Tasks[0].TaskId;
+        }
+
+        if (string.IsNullOrEmpty(taskId)) return;
+
+        IsPlanningInProgress = true;
+        PlanningStatusText = "Preparing Execution Prompt Package...";
+
+        try
+        {
+            var package = await _executionPromptService.PreparePromptPackageAsync(
+                CurrentProjectPlan, phaseId, taskId, workspacePath: WorkspacePath, generatedBy: "ChatGPTWeb");
+
+            CurrentPromptPackage = package;
+            PromptPreviewText = package.GeneratedPrompt;
+            PlanningStatusText = $"Prompt Prepared for Task '{taskId}' (Size: {package.ByteSize} bytes, Version: v{package.PlanVersion})";
+        }
+        catch (Exception ex)
+        {
+            PlanningStatusText = $"Prompt Prep Error: {ex.Message}";
+            _logService.LogError("Error preparing prompt", ex);
+        }
+        finally
+        {
+            IsPlanningInProgress = false;
+        }
+    }
+
+    private async Task ExecuteDispatchTaskAsync()
+    {
+        if (CurrentProjectPlan == null || CurrentPromptPackage == null) return;
+
+        IsPlanningInProgress = true;
+        PlanningStatusText = "Dispatching Task to Coding Agent...";
+
+        try
+        {
+            var result = await _codingAgentService.DispatchTaskAsync(
+                CurrentProjectPlan,
+                CurrentPromptPackage.PhaseId,
+                CurrentPromptPackage.TaskId,
+                CurrentPromptPackage,
+                WorkspacePath,
+                confirmHumanGate: true);
+
+            if (result.Success)
+            {
+                PlanningStatusText = $"Agent Execution SUCCESS (Status: REVIEWING, ExitCode: {result.ExitCode})";
+                _logService.LogInfo($"Task {CurrentPromptPackage.TaskId} agent execution completed successfully. Status = Reviewing.");
+            }
+            else
+            {
+                PlanningStatusText = $"Agent Execution Failed: {result.ErrorMessage} ({result.ErrorCode})";
+                _logService.LogError($"Agent execution failed: {result.ErrorMessage}");
+            }
+
+            // Reload plan
+            var reloaded = await _planningService.GetPlanAsync(CurrentProjectPlan.ProjectId);
+            if (reloaded != null)
+            {
+                CurrentProjectPlan = reloaded;
+            }
+        }
+        catch (Exception ex)
+        {
+            PlanningStatusText = $"Dispatch Error: {ex.Message}";
+            _logService.LogError("Error dispatching task", ex);
+        }
+        finally
+        {
+            IsPlanningInProgress = false;
+        }
+    }
+
+    private void ExecuteCancelExecution()
+    {
+        _codingAgentService.CancelCurrentExecution();
+        PlanningStatusText = "Cancellation requested for coding agent execution.";
     }
 
     private void UpdateProgressFromPlan(ProjectPlan? plan)
