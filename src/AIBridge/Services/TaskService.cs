@@ -7,6 +7,7 @@ public class TaskService : ITaskService
 {
     private readonly ILogService _logService;
     private readonly ITaskRegistry? _taskRegistry;
+    private readonly SemaphoreSlim _executionSemaphore = new(1, 1);
     private AgentTask? _currentTask;
     private CancellationTokenSource? _currentCts;
 
@@ -44,6 +45,19 @@ public class TaskService : ITaskService
         _taskRegistry = taskRegistry;
     }
 
+    public bool TryAcquireExecutionSlot()
+    {
+        return _executionSemaphore.Wait(0);
+    }
+
+    public void ReleaseExecutionSlot()
+    {
+        if (_executionSemaphore.CurrentCount == 0)
+        {
+            _executionSemaphore.Release();
+        }
+    }
+
     private void OnTaskPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
         if (sender is AgentTask task)
@@ -67,7 +81,6 @@ public class TaskService : ITaskService
         _taskRegistry?.RegisterTask(task);
         return task;
     }
-
 
     public async Task<AgentResult> SubmitTaskAsync(AgentTask task, ICodingAgentRunner runner, CancellationToken cancellationToken = default)
     {
@@ -133,6 +146,7 @@ public class TaskService : ITaskService
         {
             _currentCts?.Dispose();
             _currentCts = null;
+            ReleaseExecutionSlot();
         }
 
         _taskRegistry?.RecordResult(task.Id, result);
@@ -150,5 +164,38 @@ public class TaskService : ITaskService
         {
             _logService.LogWarning("No running task to cancel.");
         }
+    }
+
+    public async Task<bool> WaitForCurrentTaskToCompleteAsync(TimeSpan timeout)
+    {
+        if (_currentTask == null || _currentTask.Status != AgentTaskStatus.Running)
+        {
+            return true;
+        }
+
+        var tcs = new TaskCompletionSource<bool>();
+        Action<AgentTask> handler = null!;
+        handler = task =>
+        {
+            if (task.Id == _currentTask?.Id && task.Status != AgentTaskStatus.Running)
+            {
+                TaskUpdated -= handler;
+                tcs.TrySetResult(true);
+            }
+        };
+
+        TaskUpdated += handler;
+
+        // Double-check if completed before handler subscription
+        if (_currentTask == null || _currentTask.Status != AgentTaskStatus.Running)
+        {
+            TaskUpdated -= handler;
+            return true;
+        }
+
+        var completedTask = await Task.WhenAny(tcs.Task, Task.Delay(timeout));
+        TaskUpdated -= handler;
+
+        return completedTask == tcs.Task;
     }
 }

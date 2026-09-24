@@ -317,10 +317,22 @@ public class BridgeServer : IBridgeServer
                 }, statusCode: StatusCodes.Status400BadRequest);
             }
 
+            // Atomic single active task admission check
+            if (!_taskService.TryAcquireExecutionSlot())
+            {
+                return Results.Json(new ErrorResponse
+                {
+                    Error = "TASK_ALREADY_RUNNING",
+                    Message = "A task is already running."
+                }, statusCode: StatusCodes.Status409Conflict);
+            }
+
             var config = _configService.LoadConfig();
             var envInfo = await _environmentService.DetectAndVerifyEnvironmentAsync(config.AntigravityPath);
+
             if (envInfo.InstallationState != CliInstallationState.Ready)
             {
+                _taskService.ReleaseExecutionSlot();
                 return Results.Json(new ErrorResponse
                 {
                     Error = "ANTIGRAVITY_UNAVAILABLE",
@@ -328,14 +340,14 @@ public class BridgeServer : IBridgeServer
                 }, statusCode: StatusCodes.Status503ServiceUnavailable);
             }
 
-            // Single active task policy check
-            if (_taskService.CurrentTask != null && _taskService.CurrentTask.Status == AgentTaskStatus.Running)
+            if (envInfo.AuthState != CliAuthState.Ready)
             {
+                _taskService.ReleaseExecutionSlot();
                 return Results.Json(new ErrorResponse
                 {
-                    Error = "TASK_ALREADY_RUNNING",
-                    Message = "A task is already running."
-                }, statusCode: StatusCodes.Status409Conflict);
+                    Error = "ANTIGRAVITY_AUTH_REQUIRED",
+                    Message = "Antigravity CLI authentication is required before tasks can be executed."
+                }, statusCode: StatusCodes.Status503ServiceUnavailable);
             }
 
             var task = _taskService.CreateTask(request.Prompt, request.WorkspacePath, config.AntigravityPath);
@@ -431,7 +443,7 @@ public class BridgeServer : IBridgeServer
         // GET /api/logs
         app.MapGet("/api/logs", (int? limit) =>
         {
-            var maxCount = limit ?? 100;
+            var maxCount = Math.Clamp(limit ?? 100, 1, 500);
             var logs = _logService.GetRecentLogs(maxCount)
                 .Select(l => new
                 {

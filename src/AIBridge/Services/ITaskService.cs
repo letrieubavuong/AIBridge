@@ -12,5 +12,8 @@ public interface ITaskService
 
     Task<AgentResult> SubmitTaskAsync(AgentTask task, ICodingAgentRunner runner, CancellationToken cancellationToken = default);
     void CancelCurrentTask();
-}
 
+    bool TryAcquireExecutionSlot();
+    void ReleaseExecutionSlot();
+    Task<bool> WaitForCurrentTaskToCompleteAsync(TimeSpan timeout);
+}

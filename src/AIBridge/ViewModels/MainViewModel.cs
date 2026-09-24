@@ -517,18 +517,26 @@ public class MainViewModel : ObservableObject
 
     private async Task ExecuteSubmitTaskAsync()
     {
+        if (!_taskService.TryAcquireExecutionSlot())
+        {
+            _logService.LogWarning("Cannot submit task: A task is already running.");
+            return;
+        }
+
         try
         {
             if (string.IsNullOrWhiteSpace(WorkspacePath) || !Directory.Exists(WorkspacePath))
             {
                 _logService.LogWarning("Cannot submit task: Workspace path is invalid or does not exist.");
                 WorkspaceStatus = "Not Found";
+                _taskService.ReleaseExecutionSlot();
                 return;
             }
 
             if (string.IsNullOrWhiteSpace(PromptText))
             {
                 _logService.LogWarning("Cannot submit task: Prompt is empty.");
+                _taskService.ReleaseExecutionSlot();
                 return;
             }
 
@@ -545,6 +553,7 @@ public class MainViewModel : ObservableObject
         }
         catch (Exception ex)
         {
+            _taskService.ReleaseExecutionSlot();
             _logService.LogError("Error during task submission", ex);
         }
     }

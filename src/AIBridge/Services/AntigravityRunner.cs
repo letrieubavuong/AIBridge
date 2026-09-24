@@ -213,8 +213,22 @@ public class AntigravityRunner : ICodingAgentRunner
         using var timeoutCts = new CancellationTokenSource(TimeSpan.FromMinutes(_timeoutMinutes));
         using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeoutCts.Token);
 
+        using var cancelRegistration = linkedCts.Token.Register(() =>
+        {
+            try
+            {
+                if (!process.HasExited)
+                {
+                    process.Kill(entireProcessTree: true);
+                }
+            }
+            catch { }
+        });
+
         try
         {
+            linkedCts.Token.ThrowIfCancellationRequested();
+
             process.Start();
             process.BeginOutputReadLine();
             process.BeginErrorReadLine();
@@ -280,13 +294,9 @@ public class AntigravityRunner : ICodingAgentRunner
                 if (!process.HasExited)
                 {
                     process.Kill(entireProcessTree: true);
-                    await process.WaitForExitAsync();
                 }
             }
-            catch (Exception ex)
-            {
-                _logService.LogWarning($"Failed to cleanly kill process tree on cancellation: {ex.Message}");
-            }
+            catch { }
 
             // Differentiate User Cancellation vs Timeout
             if (cancellationToken.IsCancellationRequested)
