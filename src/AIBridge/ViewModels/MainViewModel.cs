@@ -1,5 +1,6 @@
 using System.Collections.ObjectModel;
 using System.IO;
+using System.Reflection;
 using System.Windows.Input;
 using AIBridge.Infrastructure;
 using AIBridge.Models;
@@ -28,7 +29,16 @@ public class MainViewModel : ObservableObject
     private string _currentTaskCompleted = "-";
     private bool _isTaskRunning;
 
-    public string AppVersionText => "v1.0.0 (Phase 01)";
+    public string AppVersionText
+    {
+        get
+        {
+            var version = Assembly.GetExecutingAssembly().GetName().Version;
+            var versionStr = version != null ? $"{version.Major}.{version.Minor}.{version.Build}" : "1.0.0";
+            return $"v{versionStr} (Phase 01)";
+        }
+    }
+
     public string BridgeStatusText => "Ready";
     public int BridgePort => _config.BridgePort;
 
@@ -137,6 +147,7 @@ public class MainViewModel : ObservableObject
         CancelTaskCommand = new RelayCommand(ExecuteCancelTask, CanCancelTask);
 
         _taskService.CurrentTaskChanged += OnCurrentTaskChanged;
+        _taskService.TaskUpdated += OnTaskUpdated;
 
         InitializeViewModel();
     }
@@ -175,15 +186,15 @@ public class MainViewModel : ObservableObject
         {
             var dialog = new OpenFileDialog
             {
-                Title = "Select Antigravity Executable or Command",
+                Title = "Select Antigravity Executable File",
                 Filter = "Executable files (*.exe;*.cmd;*.bat)|*.exe;*.cmd;*.bat|All files (*.*)|*.*",
-                CheckFileExists = false
+                CheckFileExists = true
             };
 
             if (dialog.ShowDialog() == true)
             {
                 AntigravityPath = dialog.FileName;
-                _logService.LogInfo($"Selected Antigravity path: {AntigravityPath}");
+                _logService.LogInfo($"Selected Antigravity executable path: {AntigravityPath}");
                 _ = ExecuteTestAntigravityAsync();
             }
         }
@@ -195,7 +206,14 @@ public class MainViewModel : ObservableObject
 
     private async Task ExecuteTestAntigravityAsync()
     {
-        _logService.LogInfo("Starting Antigravity configuration validation...");
+        if (string.IsNullOrWhiteSpace(AntigravityPath))
+        {
+            AntigravityStatus = "Unknown";
+            _logService.LogInfo("Antigravity path is not configured.");
+            return;
+        }
+
+        _logService.LogInfo("Starting Antigravity executable validation...");
         var (isValid, message) = await _antigravityRunner.ValidateConfigurationAsync(AntigravityPath);
         AntigravityStatus = isValid ? "Ready" : "Not Found";
         _logService.LogInfo($"Antigravity status updated to: {AntigravityStatus} ({message})");
@@ -226,6 +244,13 @@ public class MainViewModel : ObservableObject
 
     private async Task ExecuteValidateWorkspaceAsync()
     {
+        if (string.IsNullOrWhiteSpace(WorkspacePath))
+        {
+            WorkspaceStatus = "Unknown";
+            _logService.LogInfo("Workspace path is not configured.");
+            return;
+        }
+
         _logService.LogInfo("Validating Workspace path...");
         var (isValid, message) = await _antigravityRunner.ValidateWorkspaceAsync(WorkspacePath);
         WorkspaceStatus = isValid ? "Ready" : "Not Found";
@@ -254,7 +279,6 @@ public class MainViewModel : ObservableObject
                 return;
             }
 
-            IsTaskRunning = true;
             var task = _taskService.CreateTask(PromptText, WorkspacePath);
 
             _logService.LogInfo($"Submitting task {task.Id} for execution...");
@@ -270,10 +294,6 @@ public class MainViewModel : ObservableObject
         {
             _logService.LogError("Error during task submission", ex);
         }
-        finally
-        {
-            IsTaskRunning = false;
-        }
     }
 
     private bool CanCancelTask()
@@ -286,7 +306,7 @@ public class MainViewModel : ObservableObject
         _taskService.CancelCurrentTask();
     }
 
-    private void OnCurrentTaskChanged(AgentTask? task)
+    private void UpdateTaskUI(AgentTask? task)
     {
         if (task == null)
         {
@@ -303,5 +323,15 @@ public class MainViewModel : ObservableObject
         CurrentTaskStarted = task.StartedAt?.ToString("HH:mm:ss") ?? "-";
         CurrentTaskCompleted = task.CompletedAt?.ToString("HH:mm:ss") ?? "-";
         IsTaskRunning = task.Status == AgentTaskStatus.Running;
+    }
+
+    private void OnCurrentTaskChanged(AgentTask? task)
+    {
+        UpdateTaskUI(task);
+    }
+
+    private void OnTaskUpdated(AgentTask task)
+    {
+        UpdateTaskUI(task);
     }
 }

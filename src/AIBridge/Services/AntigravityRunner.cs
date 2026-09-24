@@ -18,29 +18,36 @@ public class AntigravityRunner : ICodingAgentRunner
     {
         if (string.IsNullOrWhiteSpace(agentPath))
         {
-            var msg = "Antigravity path is empty or not configured.";
+            var msg = "Antigravity executable path is empty or not configured.";
             _logService.LogWarning(msg);
             return Task.FromResult((false, msg));
         }
 
         try
         {
-            if (File.Exists(agentPath) || Directory.Exists(agentPath))
+            if (Directory.Exists(agentPath))
             {
-                var msg = $"Antigravity path validated successfully: {agentPath}";
+                var msg = $"Antigravity path '{agentPath}' is a directory, not an executable file.";
+                _logService.LogWarning(msg);
+                return Task.FromResult((false, msg));
+            }
+
+            if (File.Exists(agentPath))
+            {
+                var msg = $"Antigravity executable file validated: {agentPath}";
                 _logService.LogInfo(msg);
                 return Task.FromResult((true, msg));
             }
             else
             {
-                var msg = $"Antigravity path does not exist: {agentPath}";
+                var msg = $"Antigravity executable file not found: {agentPath}";
                 _logService.LogWarning(msg);
                 return Task.FromResult((false, msg));
             }
         }
         catch (Exception ex)
         {
-            var msg = $"Error validating Antigravity path: {ex.Message}";
+            var msg = $"Error validating Antigravity executable path: {ex.Message}";
             _logService.LogError(msg, ex);
             return Task.FromResult((false, msg));
         }

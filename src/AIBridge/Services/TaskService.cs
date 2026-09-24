@@ -1,3 +1,4 @@
+using System.ComponentModel;
 using AIBridge.Models;
 
 namespace AIBridge.Services;
@@ -9,20 +10,45 @@ public class TaskService : ITaskService
     private CancellationTokenSource? _currentCts;
 
     public event Action<AgentTask?>? CurrentTaskChanged;
+    public event Action<AgentTask>? TaskUpdated;
 
     public AgentTask? CurrentTask
     {
         get => _currentTask;
         private set
         {
+            if (_currentTask != null)
+            {
+                _currentTask.PropertyChanged -= OnTaskPropertyChanged;
+            }
+
             _currentTask = value;
+
+            if (_currentTask != null)
+            {
+                _currentTask.PropertyChanged += OnTaskPropertyChanged;
+            }
+
             CurrentTaskChanged?.Invoke(_currentTask);
+            if (_currentTask != null)
+            {
+                TaskUpdated?.Invoke(_currentTask);
+            }
         }
     }
 
     public TaskService(ILogService logService)
     {
         _logService = logService ?? throw new ArgumentNullException(nameof(logService));
+    }
+
+    private void OnTaskPropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (sender is AgentTask task)
+        {
+            TaskUpdated?.Invoke(task);
+            CurrentTaskChanged?.Invoke(task);
+        }
     }
 
     public AgentTask CreateTask(string prompt, string workspacePath)
@@ -34,7 +60,7 @@ public class TaskService : ITaskService
             Status = AgentTaskStatus.Pending,
             CreatedAt = DateTime.Now
         };
-        _logService.LogInfo($"New agent task created with ID: {task.Id}");
+        _logService.LogInfo($"New agent task created with ID: {task.Id} (Status: Pending)");
         return task;
     }
 
@@ -44,9 +70,9 @@ public class TaskService : ITaskService
         ArgumentNullException.ThrowIfNull(runner);
 
         CurrentTask = task;
-        task.Status = AgentTaskStatus.Running;
         task.StartedAt = DateTime.Now;
-        _logService.LogInfo($"Task {task.Id} started with runner '{runner.Name}'.");
+        task.Status = AgentTaskStatus.Running;
+        _logService.LogInfo($"Task {task.Id} status transition -> Running with runner '{runner.Name}'.");
 
         _currentCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
 
@@ -58,12 +84,12 @@ public class TaskService : ITaskService
             if (result.Success)
             {
                 task.Status = AgentTaskStatus.Success;
-                _logService.LogInfo($"Task {task.Id} completed successfully.");
+                _logService.LogInfo($"Task {task.Id} status transition -> Success.");
             }
             else
             {
                 task.Status = AgentTaskStatus.Failed;
-                _logService.LogWarning($"Task {task.Id} failed: {result.ErrorMessage}");
+                _logService.LogWarning($"Task {task.Id} status transition -> Failed: {result.ErrorMessage}");
             }
 
             return result;
@@ -72,7 +98,7 @@ public class TaskService : ITaskService
         {
             task.CompletedAt = DateTime.Now;
             task.Status = AgentTaskStatus.Cancelled;
-            _logService.LogWarning($"Task {task.Id} was cancelled.");
+            _logService.LogWarning($"Task {task.Id} status transition -> Cancelled.");
 
             return new AgentResult
             {
