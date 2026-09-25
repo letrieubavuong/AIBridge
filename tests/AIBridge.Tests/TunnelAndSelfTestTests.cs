@@ -224,12 +224,15 @@ public class TunnelAndSelfTestTests : IDisposable
         Assert.True(CloudflareTunnelService.IsAllowedDownloadHost("github.com"));
         Assert.True(CloudflareTunnelService.IsAllowedDownloadHost("api.github.com"));
         Assert.True(CloudflareTunnelService.IsAllowedDownloadHost("github-releases.githubusercontent.com"));
+        Assert.True(CloudflareTunnelService.IsAllowedDownloadHost("release-assets.githubusercontent.com"));
         Assert.True(CloudflareTunnelService.IsAllowedDownloadHost("objects.githubusercontent.com"));
         Assert.True(CloudflareTunnelService.IsAllowedDownloadHost("cloudflare.com"));
         Assert.True(CloudflareTunnelService.IsAllowedDownloadHost("downloads.cloudflare.com"));
 
         Assert.False(CloudflareTunnelService.IsAllowedDownloadHost("malicious-site.com"));
         Assert.False(CloudflareTunnelService.IsAllowedDownloadHost("github.com.attacker.com"));
+        Assert.False(CloudflareTunnelService.IsAllowedDownloadHost("github.com.attacker.example"));
+        Assert.False(CloudflareTunnelService.IsAllowedDownloadHost("release-assets.githubusercontent.com.attacker.example"));
         Assert.False(CloudflareTunnelService.IsAllowedDownloadHost("fakecloudflare.com"));
     }
 

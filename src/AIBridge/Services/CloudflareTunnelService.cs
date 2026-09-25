@@ -157,6 +157,7 @@ public class CloudflareTunnelService : ITunnelService
         "github.com",
         "api.github.com",
         "github-releases.githubusercontent.com",
+        "release-assets.githubusercontent.com",
         "objects.githubusercontent.com",
         "cloudflare.com",
         "downloads.cloudflare.com"
