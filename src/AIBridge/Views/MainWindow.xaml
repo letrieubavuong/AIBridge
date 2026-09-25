@@ -392,10 +392,10 @@
                 <!-- ================================================== -->
                 <Grid Visibility="{Binding IsConnectionSelected, Converter={StaticResource BoolToVis}}">
                     <StackPanel>
-                        <TextBlock Text="KẾT NỐI CHATGPT" FontSize="20" FontWeight="Bold" Foreground="{StaticResource PrimaryBrush}" Margin="0,0,0,16" />
+                        <TextBlock Text="KẾT NỐI CHATGPT WEB &amp; MCP" FontSize="20" FontWeight="Bold" Foreground="{StaticResource PrimaryBrush}" Margin="0,0,0,16" />
 
-                        <!-- Primary Card: ChatGPT Web -->
-                        <Border Background="{StaticResource CardBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="8" Padding="24,20" Margin="0,0,0,16">
+                        <!-- 1. Card: MCP Server cục bộ -->
+                        <Border Background="{StaticResource CardBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="8" Padding="20,16" Margin="0,0,0,16">
                             <Grid>
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="*" />
@@ -403,46 +403,106 @@
                                 </Grid.ColumnDefinitions>
 
                                 <StackPanel Grid.Column="0">
-                                    <TextBlock Text="ChatGPT Web (MCP Connection)" FontSize="16" FontWeight="Bold" Foreground="{StaticResource TextBrush}" />
-                                    <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
-                                        <TextBlock Text="Trạng thái: " Foreground="{StaticResource SubTextBrush}" FontSize="14" />
-                                        <TextBlock Text="{Binding ChatGptStatusVietnamese}" FontSize="14" FontWeight="Bold" Foreground="{StaticResource AccentBrush}" />
+                                    <TextBlock Text="MCP Server (Cục bộ)" FontSize="16" FontWeight="Bold" Foreground="{StaticResource TextBrush}" />
+                                    <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
+                                        <TextBlock Text="Trạng thái: " Foreground="{StaticResource SubTextBrush}" FontSize="13" />
+                                        <TextBlock Text="{Binding ChatGptStatusVietnamese}" FontSize="13" FontWeight="Bold" Foreground="{StaticResource AccentBrush}" />
+                                    </StackPanel>
+                                    <StackPanel Orientation="Horizontal" Margin="0,4,0,0">
+                                        <TextBlock Text="Địa chỉ: " Foreground="{StaticResource SubTextBrush}" FontSize="12" />
+                                        <TextBlock Text="{Binding McpEndpointText, Mode=OneWay}" FontSize="12" Foreground="{StaticResource SubTextBrush}" />
                                     </StackPanel>
                                 </StackPanel>
 
                                 <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
-                                    <Button Content="BẬT KẾT NỐI" Command="{Binding StartMcpCommand}" Visibility="{Binding IsMcpRunning, Converter={StaticResource InverseBool}}" 
-                                            Background="{StaticResource AccentBrush}" Foreground="#1E1E2E" FontWeight="Bold" FontSize="14" Padding="18,8" />
-                                    <Button Content="NGẮT KẾT NỐI" Command="{Binding StopMcpCommand}" Visibility="{Binding IsMcpRunning, Converter={StaticResource BoolToVis}}" 
-                                            Background="{StaticResource ErrorBrush}" Foreground="White" FontWeight="Bold" FontSize="14" Padding="18,8" />
+                                    <Button Content="BẬT MCP" Command="{Binding StartMcpCommand}" Visibility="{Binding IsMcpRunning, Converter={StaticResource InverseBool}}" 
+                                            Background="{StaticResource AccentBrush}" Foreground="#1E1E2E" FontWeight="Bold" FontSize="13" Padding="14,6" Margin="0,0,8,0" />
+                                    <Button Content="TẮT MCP" Command="{Binding StopMcpCommand}" Visibility="{Binding IsMcpRunning, Converter={StaticResource BoolToVis}}" 
+                                            Background="{StaticResource ErrorBrush}" Foreground="White" FontWeight="Bold" FontSize="13" Padding="14,6" Margin="0,0,8,0" />
+                                    <Button Content="Kiểm tra MCP" Command="{Binding RunMcpSelfTestCommand}" FontSize="13" Padding="12,6" />
                                 </StackPanel>
                             </Grid>
                         </Border>
 
+                        <!-- 2. Card: Cloudflare Tunnel Public HTTPS -->
+                        <Border Background="{StaticResource CardBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="8" Padding="20,16" Margin="0,0,0,16">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+
+                                <StackPanel Grid.Column="0">
+                                    <TextBlock Text="Kết nối Internet (Cloudflare Tunnel HTTPS)" FontSize="16" FontWeight="Bold" Foreground="{StaticResource TextBrush}" />
+                                    <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
+                                        <TextBlock Text="Trạng thái Tunnel: " Foreground="{StaticResource SubTextBrush}" FontSize="13" />
+                                        <TextBlock Text="{Binding TunnelStatusText}" FontSize="13" FontWeight="Bold" Foreground="{StaticResource PrimaryBrush}" />
+                                    </StackPanel>
+                                    <StackPanel Orientation="Horizontal" Margin="0,4,0,0">
+                                        <TextBlock Text="Địa chỉ công khai (Public Endpoint): " Foreground="{StaticResource SubTextBrush}" FontSize="12" />
+                                        <TextBlock Text="{Binding PublicMcpEndpointText, Mode=OneWay}" FontSize="12" FontWeight="Bold" Foreground="{StaticResource WarningBrush}" />
+                                    </StackPanel>
+                                </StackPanel>
+
+                                <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                                    <Button Content="Thiết lập kết nối ChatGPT" Command="{Binding StartTunnelCommand}" Visibility="{Binding IsTunnelRunning, Converter={StaticResource InverseBool}}"
+                                            Background="{StaticResource AccentBrush}" Foreground="#1E1E2E" FontWeight="Bold" FontSize="13" Padding="14,6" Margin="0,0,8,0" />
+                                    <Button Content="Ngắt Tunnel" Command="{Binding StopTunnelCommand}" Visibility="{Binding IsTunnelRunning, Converter={StaticResource BoolToVis}}"
+                                            Background="{StaticResource ErrorBrush}" Foreground="White" FontWeight="Bold" FontSize="13" Padding="14,6" Margin="0,0,8,0" />
+                                    <Button Content="Sao chép địa chỉ" Command="{Binding CopyPublicEndpointCommand}" FontSize="13" Padding="12,6" />
+                                </StackPanel>
+                            </Grid>
+                        </Border>
+
+                        <!-- 3. Card: Self-Test Result Summary -->
+                        <Border Background="{StaticResource CardBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="8" Padding="16,12" Margin="0,0,0,16">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Grid.Column="0">
+                                    <TextBlock Text="TỰ KIỂM TRA MCP (MCP SELF-TEST)" FontSize="13" FontWeight="Bold" Foreground="{StaticResource PrimaryBrush}" />
+                                    <TextBlock Text="{Binding SelfTestStatusText}" FontSize="13" Foreground="{StaticResource TextBrush}" Margin="0,4,0,0" />
+                                </StackPanel>
+                                <Button Grid.Column="1" Content="Chạy Self-Test" Command="{Binding RunMcpSelfTestCommand}" VerticalAlignment="Center" Padding="12,6" />
+                            </Grid>
+                        </Border>
+
+                        <!-- 4. Advanced Technical Details Card -->
                         <Border Background="{StaticResource CardBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="8" Padding="16">
                             <Expander Header="THÔNG TIN KỸ THUẬT (NÂNG CAO)" Background="{StaticResource CardBrush}" Foreground="{StaticResource SubTextBrush}" FontWeight="Bold">
                             <StackPanel Margin="0,12,0,0">
                                 <Grid Margin="0,0,0,8">
                                     <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="150" />
+                                        <ColumnDefinition Width="180" />
                                         <ColumnDefinition Width="*" />
                                     </Grid.ColumnDefinitions>
-                                    <TextBlock Grid.Column="0" Text="Địa chỉ MCP Endpoint:" Foreground="{StaticResource SubTextBrush}" VerticalAlignment="Center" />
+                                    <TextBlock Grid.Column="0" Text="Địa chỉ MCP Cục bộ:" Foreground="{StaticResource SubTextBrush}" VerticalAlignment="Center" />
                                     <TextBox Grid.Column="1" Text="{Binding McpEndpointText, Mode=OneWay}" IsReadOnly="True" />
                                 </Grid>
 
                                 <Grid Margin="0,0,0,8">
                                     <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="150" />
+                                        <ColumnDefinition Width="180" />
                                         <ColumnDefinition Width="*" />
                                     </Grid.ColumnDefinitions>
                                     <TextBlock Grid.Column="0" Text="Local Bridge Server:" Foreground="{StaticResource SubTextBrush}" VerticalAlignment="Center" />
                                     <TextBox Grid.Column="1" Text="{Binding BridgeHostPortText, Mode=OneWay}" IsReadOnly="True" />
                                 </Grid>
 
+                                <Grid Margin="0,0,0,8">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="180" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" Text="Cloudflare Tunnel Version:" Foreground="{StaticResource SubTextBrush}" VerticalAlignment="Center" />
+                                    <TextBox Grid.Column="1" Text="{Binding TunnelVersionText, Mode=OneWay}" IsReadOnly="True" />
+                                </Grid>
+
                                 <Grid Margin="0,0,0,12">
                                     <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="150" />
+                                        <ColumnDefinition Width="180" />
                                         <ColumnDefinition Width="*" />
                                         <ColumnDefinition Width="Auto" />
                                     </Grid.ColumnDefinitions>

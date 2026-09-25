@@ -573,6 +573,8 @@ public class MainViewModel : ObservableObject
 
     private readonly IHumanApprovalService _humanApprovalService;
     private readonly IMcpServer _mcpServer;
+    private readonly ITunnelService _tunnelService;
+    private readonly IMcpSelfTestService _mcpSelfTestService;
 
     private string _mcpStatusText = "STOPPED";
     private bool _isMcpRunning;
@@ -621,6 +623,55 @@ public class MainViewModel : ObservableObject
         get => _mcpActivityText;
         set => SetProperty(ref _mcpActivityText, value);
     }
+
+    // --- TUNNEL & MCP SELF-TEST PROPERTIES ---
+    public string TunnelStatusText
+    {
+        get
+        {
+            if (_tunnelService == null) return "Chưa khởi tạo";
+            return _tunnelService.Status switch
+            {
+                TunnelStatus.NotInstalled => "Chưa cài đặt",
+                TunnelStatus.Installing => "Đang cài đặt...",
+                TunnelStatus.Stopped => "Đã ngắt kết nối",
+                TunnelStatus.Starting => "Đang khởi động...",
+                TunnelStatus.Connected => "Đã kết nối (HTTPS public sẵn sàng)",
+                TunnelStatus.Error => !string.IsNullOrEmpty(_tunnelService.ErrorMessage) ? $"Có lỗi ({_tunnelService.ErrorMessage})" : "Có lỗi",
+                _ => "Đã ngắt"
+            };
+        }
+    }
+
+    public string TunnelVersionText => _tunnelService?.Version ?? "-";
+    public string PublicMcpEndpointText => _tunnelService?.PublicMcpEndpoint ?? "(Chưa bật Tunnel)";
+    public string PublicMcpStatusText => _tunnelService?.Status == TunnelStatus.Connected ? "Sẵn sàng" : "Chưa sẵn sàng";
+    public string ChatGptPluginStatusText => "Chưa xác minh";
+
+    public bool IsTunnelRunning => _tunnelService?.Status == TunnelStatus.Connected;
+    public bool IsTunnelInstalled => _tunnelService?.IsInstalled ?? false;
+    public bool IsTunnelStarting => _tunnelService?.Status == TunnelStatus.Starting || _tunnelService?.Status == TunnelStatus.Installing;
+
+    private string _selfTestStatusText = "Chưa kiểm tra";
+    private McpSelfTestResult? _selfTestResult;
+
+    public string SelfTestStatusText
+    {
+        get => _selfTestStatusText;
+        set => SetProperty(ref _selfTestStatusText, value);
+    }
+
+    public McpSelfTestResult? SelfTestResult
+    {
+        get => _selfTestResult;
+        set => SetProperty(ref _selfTestResult, value);
+    }
+
+    public ICommand StartTunnelCommand { get; }
+    public ICommand StopTunnelCommand { get; }
+    public ICommand SetupTunnelCommand { get; }
+    public ICommand RunMcpSelfTestCommand { get; }
+    public ICommand CopyPublicEndpointCommand { get; }
 
     // --- NAVIGATION & VIETNAMESE UX PROPERTIES ---
     private NavigationPage _currentPage = NavigationPage.Overview;
@@ -841,7 +892,9 @@ public class MainViewModel : ObservableObject
         ICodingAgentRegistry? codingAgentRegistry = null,
         ICodingAgentService? codingAgentService = null,
         IHumanApprovalService? humanApprovalService = null,
-        IMcpServer? mcpServer = null)
+        IMcpServer? mcpServer = null,
+        ITunnelService? tunnelService = null,
+        IMcpSelfTestService? mcpSelfTestService = null)
     {
         _configService = configService ?? throw new ArgumentNullException(nameof(configService));
         _logService = logService ?? throw new ArgumentNullException(nameof(logService));
@@ -889,6 +942,10 @@ public class MainViewModel : ObservableObject
         _codingAgentService = codingAgentService ?? new CodingAgentService(_codingAgentRegistry, _taskService, planStore, promptValidator, _gitEvidenceService, _taskRegistry, _humanApprovalService, _logService);
 
         _mcpServer = mcpServer ?? new McpServer(_configService, _logService, _taskService, _planningService, _executionPromptService, _codingAgentService, _humanApprovalService, _taskRegistry);
+        _tunnelService = tunnelService ?? new CloudflareTunnelService(_configService, _logService);
+        _mcpSelfTestService = mcpSelfTestService ?? new McpSelfTestService(_logService);
+
+        _tunnelService.TunnelInfoChanged += (s, info) => RunOnUi(() => NotifyTunnelStateChanged());
 
         _mcpServer.LogMessage += (s, msg) => RunOnUi(() => McpActivityText = msg);
         _mcpServer.StatusChanged += (s, running) => RunOnUi(() =>
@@ -937,6 +994,12 @@ public class MainViewModel : ObservableObject
         NavigateCommand = new RelayCommand(ExecuteNavigate);
         ClearLogViewCommand = new RelayCommand(ExecuteClearLogView);
         CopyLogsCommand = new RelayCommand(ExecuteCopyLogs);
+
+        StartTunnelCommand = new AsyncRelayCommand(ExecuteStartTunnelAsync, () => !IsTunnelStarting);
+        StopTunnelCommand = new AsyncRelayCommand(ExecuteStopTunnelAsync, () => IsTunnelRunning);
+        SetupTunnelCommand = new AsyncRelayCommand(ExecuteSetupTunnelAsync, () => !IsTunnelStarting);
+        RunMcpSelfTestCommand = new AsyncRelayCommand(ExecuteRunMcpSelfTestAsync);
+        CopyPublicEndpointCommand = new RelayCommand(ExecuteCopyPublicEndpoint);
 
         ConfirmationDialogHandler = (message, title) =>
             System.Windows.MessageBox.Show(message, title, System.Windows.MessageBoxButton.YesNo, System.Windows.MessageBoxImage.Question) == System.Windows.MessageBoxResult.Yes;
@@ -1908,6 +1971,106 @@ public class MainViewModel : ObservableObject
         McpStatusText = "STOPPED";
         OnPropertyChanged(nameof(McpEndpointText));
         _logService.LogInfo("MCP Server stopped.");
+    }
+
+    public void NotifyTunnelStateChanged()
+    {
+        OnPropertyChanged(nameof(TunnelStatusText));
+        OnPropertyChanged(nameof(TunnelVersionText));
+        OnPropertyChanged(nameof(PublicMcpEndpointText));
+        OnPropertyChanged(nameof(PublicMcpStatusText));
+        OnPropertyChanged(nameof(IsTunnelRunning));
+        OnPropertyChanged(nameof(IsTunnelInstalled));
+        OnPropertyChanged(nameof(IsTunnelStarting));
+        (StartTunnelCommand as AsyncRelayCommand)?.RaiseCanExecuteChanged();
+        (StopTunnelCommand as AsyncRelayCommand)?.RaiseCanExecuteChanged();
+        (SetupTunnelCommand as AsyncRelayCommand)?.RaiseCanExecuteChanged();
+    }
+
+    private async Task ExecuteStartTunnelAsync()
+    {
+        if (_tunnelService == null) return;
+
+        if (!_tunnelService.IsInstalled)
+        {
+            bool setupConfirmed = ConfirmationDialogHandler?.Invoke(
+                "Cloudflare Tunnel (cloudflared) chưa được cài đặt.\n\nAIBridge cần thành phần này để tạo kết nối HTTPS công khai an toàn giữa ChatGPT Web và MCP trên máy này.\n\nBạn có muốn tải và cài đặt phiên bản portable tự động vào %LOCALAPPDATA%\\AIBridge\\tools\\cloudflared không?",
+                "Cài đặt Cloudflare Tunnel") ?? false;
+
+            if (!setupConfirmed)
+            {
+                _logService.LogInfo("Tunnel setup cancelled by user.");
+                return;
+            }
+
+            bool installOk = await _tunnelService.InstallCloudflaredAsync();
+            if (!installOk)
+            {
+                _logService.LogError($"Tunnel installation failed: {_tunnelService.ErrorMessage}");
+                return;
+            }
+        }
+
+        if (!_mcpServer.IsRunning)
+        {
+            _logService.LogInfo("Auto-starting local MCP Server before public tunnel...");
+            await _mcpServer.StartAsync();
+        }
+
+        _logService.LogInfo("Starting Cloudflare Public Tunnel...");
+        bool started = await _tunnelService.StartTunnelAsync(_mcpServer.EndpointUrl);
+        if (started)
+        {
+            _logService.LogInfo($"Tunnel connected! Public MCP Endpoint: {_tunnelService.PublicMcpEndpoint}");
+        }
+        else
+        {
+            _logService.LogError($"Failed to start tunnel: {_tunnelService.ErrorMessage}");
+        }
+    }
+
+    private async Task ExecuteStopTunnelAsync()
+    {
+        if (_tunnelService == null) return;
+        await _tunnelService.StopTunnelAsync();
+    }
+
+    private async Task ExecuteSetupTunnelAsync()
+    {
+        if (_tunnelService == null) return;
+        _logService.LogInfo("User initiated manual Cloudflare Tunnel setup...");
+        await _tunnelService.InstallCloudflaredAsync();
+    }
+
+    private async Task ExecuteRunMcpSelfTestAsync()
+    {
+        if (_mcpSelfTestService == null) return;
+
+        SelfTestStatusText = "Đang kiểm tra MCP...";
+        _logService.LogInfo("Executing internal MCP Self-Test...");
+
+        string targetUrl = !string.IsNullOrEmpty(_tunnelService?.PublicMcpEndpoint)
+            ? _tunnelService.PublicMcpEndpoint
+            : McpEndpointText;
+
+        var result = await _mcpSelfTestService.RunSelfTestAsync(targetUrl, _config.ApiToken);
+        SelfTestResult = result;
+        SelfTestStatusText = result.SummaryText;
+
+        _logService.LogInfo($"MCP Self-Test completed for {targetUrl}. Result: {result.SummaryText}");
+    }
+
+    private void ExecuteCopyPublicEndpoint()
+    {
+        try
+        {
+            if (!string.IsNullOrWhiteSpace(PublicMcpEndpointText) && PublicMcpEndpointText.StartsWith("http"))
+            {
+                Clipboard.SetText(PublicMcpEndpointText);
+                _logService.LogInfo($"Copied public endpoint to clipboard: {PublicMcpEndpointText}");
+            }
+        }
+        catch { }
     }
 
     public bool CanApproveExecution()

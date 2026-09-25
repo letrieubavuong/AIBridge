@@ -13,6 +13,7 @@ public partial class App : Application
 {
     private IBridgeServer? _bridgeServer;
     private IMcpServer? _mcpServer;
+    private ITunnelService? _tunnelService;
     private ITaskService? _taskService;
 
     private void Application_Startup(object sender, StartupEventArgs e)
@@ -85,6 +86,9 @@ public partial class App : Application
                 brainProviderRegistry
             );
 
+            _tunnelService = new CloudflareTunnelService(configService, logService);
+            IMcpSelfTestService mcpSelfTestService = new McpSelfTestService(logService);
+
             WriteStartupLog("STAGE_3", "Creating MainViewModel and MainWindow...");
             viewModel = new MainViewModel(
                 configService,
@@ -104,7 +108,9 @@ public partial class App : Application
                 codingAgentRegistry,
                 codingAgentService,
                 humanApprovalService,
-                _mcpServer
+                _mcpServer,
+                _tunnelService,
+                mcpSelfTestService
             );
 
             mainWindow = new MainWindow
@@ -240,6 +246,11 @@ public partial class App : Application
                 await _mcpServer.StopAsync();
             }
 
+            if (_tunnelService != null)
+            {
+                await _tunnelService.StopTunnelAsync();
+            }
+
             // 2. If a task is running, request cancellation
             if (_taskService != null && _taskService.CurrentTask?.Status == AgentTaskStatus.Running)
             {
@@ -258,6 +269,9 @@ public partial class App : Application
                 disp.Dispose();
             }
             _mcpServer = null;
+
+            _tunnelService?.Dispose();
+            _tunnelService = null;
         }
         catch
         {

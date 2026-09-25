@@ -40,4 +40,9 @@ public class AppConfig
     public string McpHost { get; set; } = "127.0.0.1";
     public int McpPort { get; set; } = 8788;
     public Dictionary<string, string> ProjectWorkspaces { get; set; } = new();
+
+    // Tunnel Configuration (Phase 08 Integration)
+    public string TunnelProvider { get; set; } = "cloudflare";
+    public string CloudflaredPath { get; set; } = string.Empty;
+    public bool TunnelAutoStart { get; set; } = false;
 }
