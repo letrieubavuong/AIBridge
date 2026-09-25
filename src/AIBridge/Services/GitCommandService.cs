@@ -42,6 +42,9 @@ public class GitCommandService : IGitCommandService
             UseShellExecute = false,
             RedirectStandardOutput = true,
             RedirectStandardError = true,
+            StandardOutputEncoding = Encoding.UTF8,
+            StandardErrorEncoding = Encoding.UTF8,
+            StandardInputEncoding = Encoding.UTF8,
             CreateNoWindow = true
         };
 
@@ -249,6 +252,9 @@ public class GitCommandService : IGitCommandService
             UseShellExecute = false,
             RedirectStandardOutput = true,
             RedirectStandardError = true,
+            StandardOutputEncoding = Encoding.UTF8,
+            StandardErrorEncoding = Encoding.UTF8,
+            StandardInputEncoding = Encoding.UTF8,
             CreateNoWindow = true
         };
 

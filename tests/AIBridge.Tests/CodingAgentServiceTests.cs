@@ -244,6 +244,46 @@ public class CodingAgentServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task Dispatch_VietnameseAndEmoji_PreservesExactUnicodeNoMojibake()
+    {
+        var plan = CreateTestPlan();
+        plan.Status = ProjectPlanStatus.Approved;
+        await _store.SavePlanAsync(plan);
+
+        var pkg = await _promptService.PreparePromptPackageAsync(plan, "phase-01", "task-01-01", workspacePath: _testDir);
+
+        string expectedVietnameseOutput = "Tiếng Việt kiểm tra.\nNguyên nhân: cấu hình không đúng.\nCách khắc phục: sửa cấu hình và chạy lại.\nĐường dẫn thử nghiệm.\nHoàn thành thành công.\n🤖 🚀 ✅";
+
+        _fakeAgent.SimulatedResult = new CodingAgentExecutionResult
+        {
+            Success = true,
+            ExitCode = 0,
+            Stdout = expectedVietnameseOutput,
+            Stderr = "Lỗi thử nghiệm tiếng Việt: không có lỗi."
+        };
+
+        var result = await _service.DispatchTaskAsync(plan, "phase-01", "task-01-01", pkg, _testDir);
+
+        Assert.True(result.Success);
+        Assert.Equal(expectedVietnameseOutput, result.Stdout);
+        Assert.Contains("Nguyên nhân", result.Stdout);
+        Assert.Contains("Cách khắc phục", result.Stdout);
+        Assert.Contains("🤖 🚀 ✅", result.Stdout);
+
+        // Ensure NO mojibake characters
+        Assert.DoesNotContain("Ã", result.Stdout);
+        Assert.DoesNotContain("Â", result.Stdout);
+        Assert.DoesNotContain("áº", result.Stdout);
+        Assert.DoesNotContain("á»", result.Stdout);
+
+        // Verify ReviewPackage preserves Unicode
+        var reviewPkg = _service.GetReviewPackage(result.ExecutionId);
+        Assert.NotNull(reviewPkg);
+        Assert.Equal(expectedVietnameseOutput, reviewPkg.OutputSummary);
+        Assert.DoesNotContain("Ã", reviewPkg.OutputSummary);
+    }
+
+    [Fact]
     public async Task Dispatch_Timeout_ReturnsTimedOut()
     {
         var plan = CreateTestPlan();

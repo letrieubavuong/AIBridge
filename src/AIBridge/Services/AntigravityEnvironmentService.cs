@@ -111,6 +111,9 @@ public class AntigravityEnvironmentService : IAntigravityEnvironmentService
                 UseShellExecute = false,
                 RedirectStandardOutput = true,
                 RedirectStandardError = true,
+                StandardOutputEncoding = Encoding.UTF8,
+                StandardErrorEncoding = Encoding.UTF8,
+                StandardInputEncoding = Encoding.UTF8,
                 CreateNoWindow = true
             };
             startInfo.ArgumentList.Add("--version");
@@ -200,6 +203,9 @@ public class AntigravityEnvironmentService : IAntigravityEnvironmentService
                 UseShellExecute = false,
                 RedirectStandardOutput = true,
                 RedirectStandardError = true,
+                StandardOutputEncoding = Encoding.UTF8,
+                StandardErrorEncoding = Encoding.UTF8,
+                StandardInputEncoding = Encoding.UTF8,
                 CreateNoWindow = true
             };
 
@@ -278,6 +284,9 @@ public class AntigravityEnvironmentService : IAntigravityEnvironmentService
                 UseShellExecute = false,
                 RedirectStandardOutput = true,
                 RedirectStandardError = true,
+                StandardOutputEncoding = Encoding.UTF8,
+                StandardErrorEncoding = Encoding.UTF8,
+                StandardInputEncoding = Encoding.UTF8,
                 CreateNoWindow = true
             };
             startInfo.ArgumentList.Add("-p");

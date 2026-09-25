@@ -46,6 +46,9 @@ public class AntigravityRunner : ICodingAgentRunner
                 UseShellExecute = false,
                 RedirectStandardOutput = true,
                 RedirectStandardError = true,
+                StandardOutputEncoding = Encoding.UTF8,
+                StandardErrorEncoding = Encoding.UTF8,
+                StandardInputEncoding = Encoding.UTF8,
                 CreateNoWindow = true
             };
             startInfo.ArgumentList.Add("--version");
@@ -179,6 +182,9 @@ public class AntigravityRunner : ICodingAgentRunner
             UseShellExecute = false,
             RedirectStandardOutput = true,
             RedirectStandardError = true,
+            StandardOutputEncoding = Encoding.UTF8,
+            StandardErrorEncoding = Encoding.UTF8,
+            StandardInputEncoding = Encoding.UTF8,
             CreateNoWindow = true,
             WorkingDirectory = normalizedWorkspace
         };

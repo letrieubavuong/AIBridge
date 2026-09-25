@@ -152,6 +152,77 @@ public class AntigravityAdapterRealAcceptanceTest : IDisposable
         }
     }
 
+    [Fact]
+    public async Task RealAntigravityAdapter_VietnameseOutput_PreservesUnicode()
+    {
+        var envInfo = _envService.CurrentInfo;
+        if (envInfo.InstallationState == CliInstallationState.NotInstalled)
+        {
+            return;
+        }
+
+        var plan = new ProjectPlan
+        {
+            ProjectId = "proj-real-utf8-07",
+            Name = "Real Antigravity UTF8 Test",
+            Goal = "Test Vietnamese UTF8 output",
+            Status = ProjectPlanStatus.Approved,
+            Version = 1,
+            Phases = new System.Collections.Generic.List<PhasePlan>
+            {
+                new PhasePlan
+                {
+                    PhaseId = "phase-utf8",
+                    PhaseNumber = 1,
+                    Name = "Phase UTF8",
+                    Objective = "Vietnamese output validation",
+                    Status = PhaseStatus.Running,
+                    Tasks = new System.Collections.Generic.List<TaskPlan>
+                    {
+                        new TaskPlan
+                        {
+                            TaskId = "task-utf8-01",
+                            PhaseId = "phase-utf8",
+                            TaskNumber = 1,
+                            Title = "Kiểm tra tiếng Việt",
+                            Objective = "Xuất thông báo tiếng Việt",
+                            Status = TaskPlanStatus.NotStarted
+                        }
+                    }
+                }
+            }
+        };
+
+        await _store.SavePlanAsync(plan);
+
+        string vietnameseInstruction = "Output the following lines in your response:\nKiểm tra tiếng Việt\nNguyên nhân\nCách khắc phục\nHoàn thành thành công";
+
+        var promptPackage = await _promptService.PreparePromptPackageAsync(
+            plan, "phase-utf8", "task-utf8-01",
+            externalInstructions: vietnameseInstruction,
+            workspacePath: _tempWorkspace,
+            generatedBy: "ChatGPTWeb");
+
+        var result = await _service.DispatchTaskAsync(
+            plan, "phase-utf8", "task-utf8-01",
+            promptPackage, _tempWorkspace,
+            confirmHumanGate: false,
+            timeoutSeconds: 300);
+
+        Assert.NotNull(result);
+
+        // Verify output / history / review package do not contain mojibake
+        string combinedOutput = result.Stdout + result.Stderr + result.ErrorMessage;
+        Assert.DoesNotContain("NguyÃªn nhÃ¢n", combinedOutput);
+        Assert.DoesNotContain("CÃ¡ch kháº¯c phá»¥c", combinedOutput);
+
+        var reviewPkg = _service.GetReviewPackage(result.ExecutionId);
+        if (reviewPkg != null)
+        {
+            Assert.DoesNotContain("NguyÃªn nhÃ¢n", reviewPkg.OutputSummary);
+        }
+    }
+
     private static void InitializeGitRepository(string dir)
     {
         try
@@ -161,7 +232,7 @@ public class AntigravityAdapterRealAcceptanceTest : IDisposable
             RunGitCommand(dir, "config user.email \"test@aibridge.local\"");
             
             string readmePath = Path.Combine(dir, "README.md");
-            File.WriteAllText(readmePath, "# Isolated Test Repo\n");
+            File.WriteAllText(readmePath, "# Isolated Test Repo\n", System.Text.Encoding.UTF8);
             
             RunGitCommand(dir, "add README.md");
             RunGitCommand(dir, "commit -m \"initial commit\"");
@@ -177,6 +248,11 @@ public class AntigravityAdapterRealAcceptanceTest : IDisposable
             Arguments = args,
             WorkingDirectory = dir,
             UseShellExecute = false,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            StandardOutputEncoding = System.Text.Encoding.UTF8,
+            StandardErrorEncoding = System.Text.Encoding.UTF8,
+            StandardInputEncoding = System.Text.Encoding.UTF8,
             CreateNoWindow = true
         };
         using var p = Process.Start(psi);
