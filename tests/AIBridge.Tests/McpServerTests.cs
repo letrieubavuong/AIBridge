@@ -469,7 +469,6 @@ public class McpServerTests : IDisposable
             RedirectStandardError = true,
             StandardOutputEncoding = Encoding.UTF8,
             StandardErrorEncoding = Encoding.UTF8,
-            StandardInputEncoding = Encoding.UTF8,
             CreateNoWindow = true
         };
         using var p = System.Diagnostics.Process.Start(psi);

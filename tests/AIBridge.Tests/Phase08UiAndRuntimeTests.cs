@@ -70,6 +70,53 @@ public class Phase08UiAndRuntimeTests : IDisposable
     }
 
     [Fact]
+    public async Task ProcessStartInfo_ReadOnlyConfiguration_DoesNotThrowStandardInputEncodingException()
+    {
+        var logService = new LogService();
+        var envService = new AntigravityEnvironmentService(logService);
+        var resolvedCli = envService.ResolveCliExecutable();
+
+        if (string.IsNullOrWhiteSpace(resolvedCli))
+        {
+            return;
+        }
+
+        var method = typeof(AntigravityEnvironmentService).GetMethod(
+            "CreateCliStartInfo",
+            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static);
+
+        Assert.NotNull(method);
+        var psi = (System.Diagnostics.ProcessStartInfo)method!.Invoke(null, new object[] { resolvedCli, "--version" })!;
+
+        Assert.False(psi.RedirectStandardInput);
+
+        // Verify starting process with this ProcessStartInfo does NOT throw InvalidOperationException regarding StandardInputEncoding
+        using var process = new System.Diagnostics.Process { StartInfo = psi };
+        var exception = Record.Exception(() => process.Start());
+        Assert.Null(exception);
+
+        await process.WaitForExitAsync();
+    }
+
+    [Fact]
+    public async Task AntigravityDetection_RealExecutable_VerifiesSuccessfully_WhenPresent()
+    {
+        var logService = new LogService();
+        var envService = new AntigravityEnvironmentService(logService);
+        var resolvedCli = envService.ResolveCliExecutable();
+
+        if (string.IsNullOrWhiteSpace(resolvedCli))
+        {
+            return;
+        }
+
+        var info = await envService.DetectAndVerifyEnvironmentAsync(resolvedCli);
+        Assert.Equal(CliInstallationState.Ready, info.InstallationState);
+        Assert.False(string.IsNullOrWhiteSpace(info.Version));
+        Assert.NotEqual(CliAuthState.Error, info.AuthState);
+    }
+
+    [Fact]
     public async Task AntigravityDetection_ExplicitPath_NotExist_ReturnsNotFound()
     {
         var logService = new LogService();

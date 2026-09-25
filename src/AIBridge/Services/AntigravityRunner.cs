@@ -42,7 +42,6 @@ public class AntigravityRunner : ICodingAgentRunner
                 RedirectStandardError = true,
                 StandardOutputEncoding = Encoding.UTF8,
                 StandardErrorEncoding = Encoding.UTF8,
-                StandardInputEncoding = Encoding.UTF8,
                 CreateNoWindow = true
             };
         }
@@ -55,7 +54,6 @@ public class AntigravityRunner : ICodingAgentRunner
             RedirectStandardError = true,
             StandardOutputEncoding = Encoding.UTF8,
             StandardErrorEncoding = Encoding.UTF8,
-            StandardInputEncoding = Encoding.UTF8,
             CreateNoWindow = true
         };
         foreach (var arg in arguments.Split(' ', StringSplitOptions.RemoveEmptyEntries))
@@ -210,7 +208,6 @@ public class AntigravityRunner : ICodingAgentRunner
             RedirectStandardError = true,
             StandardOutputEncoding = Encoding.UTF8,
             StandardErrorEncoding = Encoding.UTF8,
-            StandardInputEncoding = Encoding.UTF8,
             CreateNoWindow = true,
             WorkingDirectory = normalizedWorkspace
         };

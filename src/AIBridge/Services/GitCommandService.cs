@@ -255,7 +255,6 @@ public class GitCommandService : IGitCommandService
             RedirectStandardError = true,
             StandardOutputEncoding = Encoding.UTF8,
             StandardErrorEncoding = Encoding.UTF8,
-            StandardInputEncoding = Encoding.UTF8,
             CreateNoWindow = true
         };
 

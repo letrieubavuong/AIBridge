@@ -250,7 +250,6 @@ public class AntigravityAdapterRealAcceptanceTest : IDisposable
             RedirectStandardError = true,
             StandardOutputEncoding = System.Text.Encoding.UTF8,
             StandardErrorEncoding = System.Text.Encoding.UTF8,
-            StandardInputEncoding = System.Text.Encoding.UTF8,
             CreateNoWindow = true
         };
         using var p = Process.Start(psi);
