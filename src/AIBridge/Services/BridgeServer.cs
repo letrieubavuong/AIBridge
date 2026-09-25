@@ -36,7 +36,10 @@ public class BridgeServer : IBridgeServer
 
     private WebApplication? _app;
     private BridgeStatus _status = BridgeStatus.Stopped;
+    private string? _errorMessage;
     private readonly object _statusLock = new();
+
+    public string? ErrorMessage => _errorMessage;
 
     private const int MaxRequestSizeBytes = 262144; // 256 KB
     private const int MaxLogOutputChars = 65536;    // 64 KB
@@ -250,18 +253,21 @@ public class BridgeServer : IBridgeServer
             _app = app;
             await app.StartAsync();
 
+            _errorMessage = null;
             Status = BridgeStatus.Running;
             _logService.LogInfo($"Bridge started on http://{host}:{port}.");
             return true;
         }
         catch (Exception ex) when (ex is IOException or System.Net.Sockets.SocketException)
         {
+            _errorMessage = $"Port {port} already in use or socket error.";
             _logService.LogError($"Bridge: ERROR {host}:{port} Port already in use or socket error.", ex);
             Status = BridgeStatus.Error;
             return false;
         }
         catch (Exception ex)
         {
+            _errorMessage = ex.Message;
             _logService.LogError($"Failed to start BridgeServer on {host}:{port}", ex);
             Status = BridgeStatus.Error;
             return false;

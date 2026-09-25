@@ -16,14 +16,22 @@ public class ConfigService : IConfigService
         PropertyNameCaseInsensitive = true
     };
 
-    public ConfigService(ILogService logService)
+    public ConfigService(ILogService logService, string? customConfigFilePath = null)
     {
         _logService = logService ?? throw new ArgumentNullException(nameof(logService));
-        _configDirectory = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-            "AIBridge"
-        );
-        _configFilePath = Path.Combine(_configDirectory, "config.json");
+        if (!string.IsNullOrWhiteSpace(customConfigFilePath))
+        {
+            _configFilePath = customConfigFilePath;
+            _configDirectory = Path.GetDirectoryName(customConfigFilePath) ?? Path.GetTempPath();
+        }
+        else
+        {
+            _configDirectory = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                "AIBridge"
+            );
+            _configFilePath = Path.Combine(_configDirectory, "config.json");
+        }
     }
 
     public string ConfigFilePath => _configFilePath;
@@ -48,6 +56,8 @@ public class ConfigService : IConfigService
                 return new AppConfig();
             }
 
+            SanitizeConfig(config);
+
             _logService.LogInfo("Configuration loaded successfully.");
             return config;
         }
@@ -55,6 +65,57 @@ public class ConfigService : IConfigService
         {
             _logService.LogError("Failed to load configuration file", ex);
             return new AppConfig();
+        }
+    }
+
+    private void SanitizeConfig(AppConfig config)
+    {
+        if (config == null) return;
+
+        bool modified = false;
+
+        // Clean up test workspace leakage or non-existent workspace paths
+        if (!string.IsNullOrWhiteSpace(config.WorkspacePath))
+        {
+            bool isTestWorkspace = config.WorkspacePath.Contains("AIBridge_McpServerTest_", StringComparison.OrdinalIgnoreCase) ||
+                                  config.WorkspacePath.Contains("AIBridge_HumanGateTest_", StringComparison.OrdinalIgnoreCase) ||
+                                  config.WorkspacePath.Contains("AIBridge_GitCorrelation_", StringComparison.OrdinalIgnoreCase) ||
+                                  config.WorkspacePath.Contains("AIBridge_Phase08_", StringComparison.OrdinalIgnoreCase) ||
+                                  config.WorkspacePath.Contains("AIBridge_PlanStore_", StringComparison.OrdinalIgnoreCase);
+
+            if (isTestWorkspace || !Directory.Exists(config.WorkspacePath))
+            {
+                _logService.LogWarning($"Sanitizing invalid or temporary test workspace path '{config.WorkspacePath}'.");
+                config.WorkspacePath = string.Empty;
+                modified = true;
+            }
+        }
+
+        // Clean up project workspaces mapping
+        if (config.ProjectWorkspaces != null && config.ProjectWorkspaces.Count > 0)
+        {
+            var keysToRemove = config.ProjectWorkspaces
+                .Where(kv => kv.Value.Contains("AIBridge_McpServerTest_", StringComparison.OrdinalIgnoreCase) ||
+                             kv.Value.Contains("AIBridge_HumanGateTest_", StringComparison.OrdinalIgnoreCase) ||
+                             kv.Value.Contains("AIBridge_GitCorrelation_", StringComparison.OrdinalIgnoreCase) ||
+                             !Directory.Exists(kv.Value))
+                .Select(kv => kv.Key)
+                .ToList();
+
+            foreach (var k in keysToRemove)
+            {
+                config.ProjectWorkspaces.Remove(k);
+                modified = true;
+            }
+        }
+
+        if (modified)
+        {
+            try
+            {
+                SaveConfig(config);
+            }
+            catch { }
         }
     }
 

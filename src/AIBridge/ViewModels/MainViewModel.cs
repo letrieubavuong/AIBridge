@@ -89,7 +89,22 @@ public class MainViewModel : ObservableObject
         }
     }
 
-    public string BridgeStatusText => _bridgeServer?.Status.ToString().ToUpper() ?? "STOPPED";
+    public string BridgeStatusText
+    {
+        get
+        {
+            if (_bridgeServer == null) return "STOPPED";
+            return _bridgeServer.Status switch
+            {
+                BridgeStatus.Running => "READY",
+                BridgeStatus.Starting => "STARTING",
+                BridgeStatus.Error => !string.IsNullOrEmpty(_bridgeServer.ErrorMessage) ? $"ERROR ({_bridgeServer.ErrorMessage})" : "ERROR",
+                _ => "STOPPED"
+            };
+        }
+    }
+
+    public string? BridgeErrorMessage => _bridgeServer?.ErrorMessage;
     public string BridgeHostPortText => $"{_config.BridgeHost}:{_config.BridgePort}";
     public int BridgePort => _config.BridgePort;
 
@@ -142,7 +157,7 @@ public class MainViewModel : ObservableObject
             if (SetProperty(ref _workspacePath, value))
             {
                 _config.WorkspacePath = value;
-                WorkspaceStatus = "Unknown";
+                UpdateWorkspaceStatus(value);
                 SaveConfiguration();
             }
         }
@@ -152,6 +167,20 @@ public class MainViewModel : ObservableObject
     {
         get => _workspaceStatus;
         set => SetProperty(ref _workspaceStatus, value);
+    }
+
+    private void UpdateWorkspaceStatus(string path)
+    {
+        if (string.IsNullOrWhiteSpace(path) || !Directory.Exists(path))
+        {
+            WorkspaceStatus = "NOT FOUND / WORKSPACE INVALID";
+        }
+        else
+        {
+            WorkspaceStatus = Directory.Exists(Path.Combine(path, ".git"))
+                ? "Valid Git Workspace"
+                : "Valid Workspace (No Git)";
+        }
     }
 
     public string PromptText
@@ -513,7 +542,13 @@ public class MainViewModel : ObservableObject
     public object? SelectedNode
     {
         get => _selectedNode;
-        set => SetProperty(ref _selectedNode, value);
+        set
+        {
+            if (SetProperty(ref _selectedNode, value))
+            {
+                (ApproveExecutionCommand as AsyncRelayCommand)?.RaiseCanExecuteChanged();
+            }
+        }
     }
 
     public ICommand GeneratePromptCommand { get; }
@@ -544,7 +579,14 @@ public class MainViewModel : ObservableObject
     public bool IsMcpRunning
     {
         get => _isMcpRunning;
-        set => SetProperty(ref _isMcpRunning, value);
+        set
+        {
+            if (SetProperty(ref _isMcpRunning, value))
+            {
+                (StartMcpCommand as AsyncRelayCommand)?.RaiseCanExecuteChanged();
+                (StopMcpCommand as AsyncRelayCommand)?.RaiseCanExecuteChanged();
+            }
+        }
     }
 
     public string McpEndpointText
@@ -639,8 +681,8 @@ public class MainViewModel : ObservableObject
             McpStatusText = running ? $"RUNNING ({_mcpServer.BindAddress}:{_mcpServer.Port})" : "STOPPED";
         });
 
-        StartMcpCommand = new AsyncRelayCommand(ExecuteStartMcpAsync);
-        StopMcpCommand = new AsyncRelayCommand(ExecuteStopMcpAsync);
+        StartMcpCommand = new AsyncRelayCommand(ExecuteStartMcpAsync, () => !IsMcpRunning);
+        StopMcpCommand = new AsyncRelayCommand(ExecuteStopMcpAsync, () => IsMcpRunning);
 
         BrowseAntigravityCommand = new RelayCommand(ExecuteBrowseAntigravity);
         TestAntigravityCommand = new AsyncRelayCommand(ExecuteTestAntigravityAsync);
@@ -692,6 +734,7 @@ public class MainViewModel : ObservableObject
 
         _antigravityPath = _config.AntigravityPath;
         _workspacePath = _config.WorkspacePath;
+        UpdateWorkspaceStatus(_workspacePath);
         OnPropertyChanged(nameof(AntigravityPath));
         OnPropertyChanged(nameof(WorkspacePath));
         OnPropertyChanged(nameof(ApiTokenText));
@@ -890,8 +933,8 @@ public class MainViewModel : ObservableObject
         {
             CliStateText = info.InstallationState switch
             {
-                CliInstallationState.Ready => "READY",
-                CliInstallationState.NotInstalled => "NOT INSTALLED",
+                CliInstallationState.Ready => "FOUND",
+                CliInstallationState.NotInstalled => "NOT FOUND",
                 CliInstallationState.Error => "ERROR",
                 _ => "CHECKING..."
             };
@@ -899,17 +942,35 @@ public class MainViewModel : ObservableObject
             CliVersionText = !string.IsNullOrWhiteSpace(info.Version) ? info.Version : "-";
             IsCliMissing = info.InstallationState == CliInstallationState.NotInstalled;
 
-            AuthStateText = info.AuthState switch
+            if (info.InstallationState == CliInstallationState.NotInstalled)
             {
-                CliAuthState.Ready => "READY",
-                CliAuthState.Required => "REQUIRED",
-                CliAuthState.Error => "ERROR",
-                _ => "UNKNOWN"
-            };
+                AuthStateText = "CLI NOT FOUND";
+            }
+            else if (info.InstallationState == CliInstallationState.Error)
+            {
+                AuthStateText = "CLI ERROR";
+            }
+            else
+            {
+                AuthStateText = info.AuthState switch
+                {
+                    CliAuthState.Ready => "AUTHENTICATED",
+                    CliAuthState.Required => "AUTH REQUIRED",
+                    CliAuthState.Error => "AUTH ERROR",
+                    _ => "CLI FOUND / AUTH UNKNOWN"
+                };
+            }
 
             IsAuthRequired = info.AuthState == CliAuthState.Required;
 
-            AntigravityStatus = info.InstallationState == CliInstallationState.Ready ? "Ready" : "Not Found";
+            AntigravityStatus = info.InstallationState switch
+            {
+                CliInstallationState.Ready => !string.IsNullOrEmpty(info.Version) ? $"FOUND ({info.Version})" : "FOUND",
+                CliInstallationState.NotInstalled => "NOT FOUND",
+                CliInstallationState.Error => !string.IsNullOrEmpty(info.StatusMessage) ? $"ERROR ({info.StatusMessage})" : "ERROR",
+                _ => "Checking..."
+            };
+
             if (!string.IsNullOrWhiteSpace(info.ExecutablePath) && string.IsNullOrWhiteSpace(AntigravityPath))
             {
                 _antigravityPath = info.ExecutablePath;

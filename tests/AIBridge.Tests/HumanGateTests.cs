@@ -124,10 +124,10 @@ public class HumanGateTests : IDisposable
     [Fact]
     public async Task Section7_ApiCannotSelfApprove_Returns404_AndNoApprovalCreated()
     {
-        var configService = new ConfigService(_logService);
+        var configService = new ConfigService(_logService, Path.Combine(_testDir, "test_config.json"));
         var cfg = configService.LoadConfig();
         cfg.BridgeHost = "127.0.0.1";
-        cfg.BridgePort = 9889;
+        cfg.BridgePort = 9892;
         cfg.ApiToken = "test-token-human-gate-api";
         configService.SaveConfig(cfg);
 
@@ -152,7 +152,7 @@ public class HumanGateTests : IDisposable
 
         try
         {
-            using var client = new HttpClient { BaseAddress = new Uri("http://127.0.0.1:9889") };
+            using var client = new HttpClient { BaseAddress = new Uri($"http://127.0.0.1:{cfg.BridgePort}") };
             client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", "test-token-human-gate-api");
 
             // Attempt to invoke removed approval endpoint

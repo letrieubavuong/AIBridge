@@ -65,7 +65,7 @@ public class AsyncRelayCommand : ObservableObject, ICommand
         return !IsExecuting && (_canExecute == null || _canExecute(parameter));
     }
 
-    public async void Execute(object? parameter)
+    public async Task ExecuteAsync(object? parameter)
     {
         if (!CanExecute(parameter)) return;
 
@@ -80,9 +80,16 @@ public class AsyncRelayCommand : ObservableObject, ICommand
         }
     }
 
+    public async void Execute(object? parameter)
+    {
+        await ExecuteAsync(parameter);
+    }
+
     public event EventHandler? CanExecuteChanged
     {
         add => CommandManager.RequerySuggested += value;
         remove => CommandManager.RequerySuggested -= value;
     }
+
+    public void RaiseCanExecuteChanged() => CommandManager.InvalidateRequerySuggested();
 }

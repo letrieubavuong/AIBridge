@@ -23,9 +23,26 @@ public class AntigravityEnvironmentService : IAntigravityEnvironmentService
     public string ResolveCliExecutable(string? configuredPath = null)
     {
         // 1. Configured path if valid file
-        if (!string.IsNullOrWhiteSpace(configuredPath) && File.Exists(configuredPath))
+        if (!string.IsNullOrWhiteSpace(configuredPath))
         {
-            return Path.GetFullPath(configuredPath);
+            var trimmed = configuredPath.Trim('"', '\'', ' ');
+            if (File.Exists(trimmed))
+            {
+                return Path.GetFullPath(trimmed);
+            }
+            if (File.Exists(trimmed + ".exe"))
+            {
+                return Path.GetFullPath(trimmed + ".exe");
+            }
+            if (File.Exists(trimmed + ".cmd"))
+            {
+                return Path.GetFullPath(trimmed + ".cmd");
+            }
+            if (File.Exists(trimmed + ".bat"))
+            {
+                return Path.GetFullPath(trimmed + ".bat");
+            }
+            return string.Empty;
         }
 
         // 2. User-local default path: %LOCALAPPDATA%\agy\bin\agy.exe
@@ -52,20 +69,13 @@ public class AntigravityEnvironmentService : IAntigravityEnvironmentService
                 try
                 {
                     var exePath = Path.Combine(pathDir, "agy.exe");
-                    if (File.Exists(exePath))
-                    {
-                        return exePath;
-                    }
+                    if (File.Exists(exePath)) return exePath;
+
                     var cmdPath = Path.Combine(pathDir, "agy.cmd");
-                    if (File.Exists(cmdPath))
-                    {
-                        return cmdPath;
-                    }
+                    if (File.Exists(cmdPath)) return cmdPath;
+
                     var batPath = Path.Combine(pathDir, "agy.bat");
-                    if (File.Exists(batPath))
-                    {
-                        return batPath;
-                    }
+                    if (File.Exists(batPath)) return batPath;
                 }
                 catch
                 {
@@ -75,6 +85,43 @@ public class AntigravityEnvironmentService : IAntigravityEnvironmentService
         }
 
         return string.Empty;
+    }
+
+    private static ProcessStartInfo CreateCliStartInfo(string executable, string arguments)
+    {
+        string ext = Path.GetExtension(executable).ToLowerInvariant();
+        if (OperatingSystem.IsWindows() && (ext is ".cmd" or ".bat" || !executable.EndsWith(".exe", StringComparison.OrdinalIgnoreCase)))
+        {
+            return new ProcessStartInfo
+            {
+                FileName = "cmd.exe",
+                Arguments = $"/c \"\"{executable}\" {arguments}\"",
+                UseShellExecute = false,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                StandardOutputEncoding = Encoding.UTF8,
+                StandardErrorEncoding = Encoding.UTF8,
+                StandardInputEncoding = Encoding.UTF8,
+                CreateNoWindow = true
+            };
+        }
+
+        var psi = new ProcessStartInfo
+        {
+            FileName = executable,
+            UseShellExecute = false,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            StandardOutputEncoding = Encoding.UTF8,
+            StandardErrorEncoding = Encoding.UTF8,
+            StandardInputEncoding = Encoding.UTF8,
+            CreateNoWindow = true
+        };
+        foreach (var arg in arguments.Split(' ', StringSplitOptions.RemoveEmptyEntries))
+        {
+            psi.ArgumentList.Add(arg);
+        }
+        return psi;
     }
 
     public async Task<AntigravityEnvironmentInfo> DetectAndVerifyEnvironmentAsync(string? configuredPath = null)
@@ -91,12 +138,14 @@ public class AntigravityEnvironmentService : IAntigravityEnvironmentService
         var resolvedExecutable = ResolveCliExecutable(configuredPath);
         if (string.IsNullOrWhiteSpace(resolvedExecutable))
         {
-            _logService.LogWarning("Antigravity CLI ('agy') not found in configured path, %LOCALAPPDATA%\\agy\\bin, or PATH.");
+            _logService.LogWarning($"Antigravity CLI ('agy') not found in configured path '{configuredPath}', %LOCALAPPDATA%\\agy\\bin, or PATH.");
             info.InstallationState = CliInstallationState.NotInstalled;
             info.AuthState = CliAuthState.Unknown;
-            info.ExecutablePath = string.Empty;
+            info.ExecutablePath = configuredPath ?? string.Empty;
             info.Version = string.Empty;
-            info.StatusMessage = "Antigravity CLI is not installed.";
+            info.StatusMessage = !string.IsNullOrWhiteSpace(configuredPath)
+                ? $"File not found: '{configuredPath}'"
+                : "Antigravity CLI is not installed.";
             UpdateInfo(info);
             return info;
         }
@@ -105,18 +154,7 @@ public class AntigravityEnvironmentService : IAntigravityEnvironmentService
 
         try
         {
-            var startInfo = new ProcessStartInfo
-            {
-                FileName = resolvedExecutable,
-                UseShellExecute = false,
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-                StandardOutputEncoding = Encoding.UTF8,
-                StandardErrorEncoding = Encoding.UTF8,
-                StandardInputEncoding = Encoding.UTF8,
-                CreateNoWindow = true
-            };
-            startInfo.ArgumentList.Add("--version");
+            var startInfo = CreateCliStartInfo(resolvedExecutable, "--version");
 
             using var process = new Process { StartInfo = startInfo };
             process.Start();
@@ -129,23 +167,17 @@ public class AntigravityEnvironmentService : IAntigravityEnvironmentService
 
             var stdout = (await stdoutTask).Trim();
             var stderr = (await stderrTask).Trim();
+            var versionOutput = !string.IsNullOrWhiteSpace(stdout) ? stdout : stderr;
 
-            if (process.ExitCode == 0 && !string.IsNullOrWhiteSpace(stdout))
+            if (process.ExitCode == 0 && !string.IsNullOrWhiteSpace(versionOutput))
             {
                 info.InstallationState = CliInstallationState.Ready;
-                info.Version = stdout;
-                info.StatusMessage = $"Antigravity CLI verified: agy {stdout} ({resolvedExecutable})";
+                info.Version = versionOutput;
+                info.StatusMessage = $"Antigravity CLI verified: agy {versionOutput} ({resolvedExecutable})";
                 _logService.LogInfo(info.StatusMessage);
 
-                // Check authentication state (reuse cached Ready state if executable path has not changed)
-                if (previousAuthState == CliAuthState.Ready)
-                {
-                    info.AuthState = CliAuthState.Ready;
-                }
-                else
-                {
-                    info.AuthState = await CheckAuthenticationAsync(resolvedExecutable);
-                }
+                // Check authentication state
+                info.AuthState = await CheckAuthenticationAsync(resolvedExecutable);
             }
             else
             {
@@ -278,19 +310,7 @@ public class AntigravityEnvironmentService : IAntigravityEnvironmentService
 
         try
         {
-            var startInfo = new ProcessStartInfo
-            {
-                FileName = executable,
-                UseShellExecute = false,
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-                StandardOutputEncoding = Encoding.UTF8,
-                StandardErrorEncoding = Encoding.UTF8,
-                StandardInputEncoding = Encoding.UTF8,
-                CreateNoWindow = true
-            };
-            startInfo.ArgumentList.Add("-p");
-            startInfo.ArgumentList.Add("Reply with: OK");
+            var startInfo = CreateCliStartInfo(executable, "models");
 
             using var process = new Process { StartInfo = startInfo };
             process.Start();
@@ -298,20 +318,26 @@ public class AntigravityEnvironmentService : IAntigravityEnvironmentService
             var stdoutTask = process.StandardOutput.ReadToEndAsync();
             var stderrTask = process.StandardError.ReadToEndAsync();
 
-            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(120));
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(15));
             await process.WaitForExitAsync(cts.Token);
 
             var stdout = (await stdoutTask).Trim();
             var stderr = (await stderrTask).Trim();
             var combined = (stdout + "\n" + stderr).ToLowerInvariant();
 
-            if (combined.Contains("auth required") || combined.Contains("unauthenticated") || combined.Contains("login required") || combined.Contains("please login"))
+            if (combined.Contains("auth required") || combined.Contains("unauthenticated") || combined.Contains("login required") || combined.Contains("please login") || combined.Contains("not logged in"))
             {
                 _logService.LogWarning("Antigravity CLI authentication is required.");
                 return CliAuthState.Required;
             }
 
-            if (process.ExitCode == 0 || stdout.Contains("OK"))
+            if (process.ExitCode == 0 && (combined.Contains("gemini") || combined.Contains("flash") || combined.Contains("pro") || combined.Contains("claude") || combined.Contains("gpt") || combined.Contains("fetching")))
+            {
+                _logService.LogInfo("Antigravity CLI authentication verified.");
+                return CliAuthState.Ready;
+            }
+
+            if (process.ExitCode == 0)
             {
                 _logService.LogInfo("Antigravity CLI authentication verified.");
                 return CliAuthState.Ready;

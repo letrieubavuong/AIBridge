@@ -18,8 +18,11 @@ using Xunit;
 
 namespace AIBridge.Tests;
 
+[Collection("McpServerTests")]
 public class McpServerTests : IDisposable
 {
+    private static int _nextPort = 8820;
+
     private readonly string _testDir;
     private readonly FileProjectPlanStore _store;
     private readonly FakeCodingAgent _fakeAgent;
@@ -40,10 +43,10 @@ public class McpServerTests : IDisposable
         Directory.CreateDirectory(_testDir);
 
         _logService = new LogService();
-        _configService = new ConfigService(_logService);
+        _configService = new ConfigService(_logService, Path.Combine(_testDir, "test_config.json"));
         var cfg = _configService.LoadConfig();
         cfg.McpHost = "127.0.0.1";
-        cfg.McpPort = 8799;
+        cfg.McpPort = System.Threading.Interlocked.Increment(ref _nextPort);
         cfg.ApiToken = "test-token-mcp-phase08";
         cfg.WorkspacePath = _testDir;
         _configService.SaveConfig(cfg);
@@ -78,6 +81,10 @@ public class McpServerTests : IDisposable
 
     private static async Task<McpClient> CreateClientAsync(McpServer server, string? token = "test-token-mcp-phase08")
     {
+        var endpointUri = string.IsNullOrEmpty(token)
+            ? new Uri(server.EndpointUrl)
+            : new Uri($"{server.EndpointUrl}?token={token}");
+
         var httpClient = new HttpClient();
         if (!string.IsNullOrEmpty(token))
         {
@@ -86,7 +93,7 @@ public class McpServerTests : IDisposable
 
         var transport = new HttpClientTransport(new HttpClientTransportOptions
         {
-            Endpoint = new Uri(server.EndpointUrl)
+            Endpoint = endpointUri
         }, httpClient, loggerFactory: null, ownsHttpClient: true);
 
         return await McpClient.CreateAsync(transport);

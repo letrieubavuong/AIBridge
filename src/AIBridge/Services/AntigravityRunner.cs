@@ -28,6 +28,43 @@ public class AntigravityRunner : ICodingAgentRunner
         return _environmentService.ResolveCliExecutable(configuredPath);
     }
 
+    private static ProcessStartInfo CreateCliStartInfo(string executable, string arguments)
+    {
+        string ext = Path.GetExtension(executable).ToLowerInvariant();
+        if (OperatingSystem.IsWindows() && (ext is ".cmd" or ".bat" || !executable.EndsWith(".exe", StringComparison.OrdinalIgnoreCase)))
+        {
+            return new ProcessStartInfo
+            {
+                FileName = "cmd.exe",
+                Arguments = $"/c \"\"{executable}\" {arguments}\"",
+                UseShellExecute = false,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                StandardOutputEncoding = Encoding.UTF8,
+                StandardErrorEncoding = Encoding.UTF8,
+                StandardInputEncoding = Encoding.UTF8,
+                CreateNoWindow = true
+            };
+        }
+
+        var psi = new ProcessStartInfo
+        {
+            FileName = executable,
+            UseShellExecute = false,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            StandardOutputEncoding = Encoding.UTF8,
+            StandardErrorEncoding = Encoding.UTF8,
+            StandardInputEncoding = Encoding.UTF8,
+            CreateNoWindow = true
+        };
+        foreach (var arg in arguments.Split(' ', StringSplitOptions.RemoveEmptyEntries))
+        {
+            psi.ArgumentList.Add(arg);
+        }
+        return psi;
+    }
+
     public async Task<(bool IsValid, string Message)> ValidateConfigurationAsync(string agentPath)
     {
         var resolvedCli = ResolveCliPath(agentPath);
@@ -40,18 +77,7 @@ public class AntigravityRunner : ICodingAgentRunner
 
         try
         {
-            var startInfo = new ProcessStartInfo
-            {
-                FileName = resolvedCli,
-                UseShellExecute = false,
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-                StandardOutputEncoding = Encoding.UTF8,
-                StandardErrorEncoding = Encoding.UTF8,
-                StandardInputEncoding = Encoding.UTF8,
-                CreateNoWindow = true
-            };
-            startInfo.ArgumentList.Add("--version");
+            var startInfo = CreateCliStartInfo(resolvedCli, "--version");
 
             using var process = new Process { StartInfo = startInfo };
             process.Start();

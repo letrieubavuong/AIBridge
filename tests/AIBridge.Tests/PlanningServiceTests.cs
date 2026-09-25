@@ -27,7 +27,7 @@ public class PlanningServiceTests : IDisposable
         _brainRegistry.RegisterProvider(_mockBrain);
 
         var logService = new LogService();
-        var configService = new ConfigService(logService);
+        var configService = new ConfigService(logService, Path.Combine(_testDir, "test_config.json"));
 
         _brainService = new AIBrainService(logService, configService, _brainRegistry);
         _validator = new PlanValidator();
