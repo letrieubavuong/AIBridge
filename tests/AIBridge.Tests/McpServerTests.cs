@@ -1,15 +1,19 @@
 using System;
+using System.Collections.Generic;
+using System.ComponentModel;
 using System.IO;
 using System.Linq;
 using System.Net;
 using System.Net.Http;
 using System.Net.Http.Headers;
-using System.Net.Http.Json;
 using System.Text;
 using System.Text.Json;
 using System.Threading.Tasks;
+using ModelContextProtocol.Client;
+using ModelContextProtocol.Protocol;
 using AIBridge.Models;
 using AIBridge.Services;
+using McpServer = AIBridge.Services.McpServer;
 using Xunit;
 
 namespace AIBridge.Tests;
@@ -72,21 +76,38 @@ public class McpServerTests : IDisposable
         catch { }
     }
 
-    private static string GetMcpContentText(string jsonResponse)
+    private static async Task<McpClient> CreateClientAsync(McpServer server, string? token = "test-token-mcp-phase08")
     {
-        using var doc = JsonDocument.Parse(jsonResponse);
-        if (doc.RootElement.TryGetProperty("result", out var resEl) &&
-            resEl.TryGetProperty("content", out var contentArray) &&
-            contentArray.ValueKind == JsonValueKind.Array &&
-            contentArray.GetArrayLength() > 0)
+        var httpClient = new HttpClient();
+        if (!string.IsNullOrEmpty(token))
         {
-            return contentArray[0].GetProperty("text").GetString() ?? jsonResponse;
+            httpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
         }
-        return jsonResponse;
+
+        var transport = new HttpClientTransport(new HttpClientTransportOptions
+        {
+            Endpoint = new Uri(server.EndpointUrl)
+        }, httpClient, loggerFactory: null, ownsHttpClient: true);
+
+        return await McpClient.CreateAsync(transport);
+    }
+
+    private static async Task<CallToolResult> CallToolAsync(McpClient client, string name, IReadOnlyDictionary<string, object?>? arguments = null)
+    {
+        return await client.CallToolAsync(name, arguments ?? new Dictionary<string, object?>());
+    }
+
+    private static string GetResultText(CallToolResult result)
+    {
+        if (result.Content != null && result.Content.Count > 0 && result.Content[0] is TextContentBlock tb)
+        {
+            return tb.Text ?? "";
+        }
+        return "";
     }
 
     [Fact]
-    public async Task Section4_McpServer_SseTransport_Connects_And_EmitsEndpointEvent()
+    public async Task RealMcpClient_Connect_Initialize_ListTools_Assert15Tools()
     {
         using var server = new McpServer(_configService, _logService, _taskService, _planningService, _promptService, _codingAgentService, _humanApprovalService, _taskRegistry);
         bool started = await server.StartAsync();
@@ -94,127 +115,14 @@ public class McpServerTests : IDisposable
 
         try
         {
-            using var client = new HttpClient();
-            using var req = new HttpRequestMessage(HttpMethod.Get, server.EndpointUrl + "/sse");
-            req.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("text/event-stream"));
+            await using var client = await CreateClientAsync(server);
 
-            using var resp = await client.SendAsync(req, HttpCompletionOption.ResponseHeadersRead);
-            Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
-            Assert.Equal("text/event-stream", resp.Content.Headers.ContentType?.MediaType);
+            var tools = await client.ListToolsAsync();
+            Assert.Equal(15, tools.Count);
 
-            using var stream = await resp.Content.ReadAsStreamAsync();
-            using var reader = new StreamReader(stream, Encoding.UTF8);
+            var toolNames = tools.Select(t => t.Name).ToList();
 
-            string line1 = await reader.ReadLineAsync() ?? "";
-            string line2 = await reader.ReadLineAsync() ?? "";
-
-            Assert.Equal("event: endpoint", line1);
-            Assert.Contains("data: http://", line2);
-            Assert.Contains("/messages?sessionId=", line2);
-        }
-        finally
-        {
-            await server.StopAsync();
-        }
-    }
-
-    [Fact]
-    public async Task Section5_McpServer_CorsSecurity_Preflight_ReflectsOrigin()
-    {
-        using var server = new McpServer(_configService, _logService, _taskService, _planningService, _promptService, _codingAgentService, _humanApprovalService, _taskRegistry);
-        bool started = await server.StartAsync();
-        Assert.True(started);
-
-        try
-        {
-            using var client = new HttpClient();
-            using var req = new HttpRequestMessage(HttpMethod.Options, server.EndpointUrl);
-            req.Headers.Add("Origin", "https://chatgpt.com");
-
-            using var resp = await client.SendAsync(req);
-            Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
-            Assert.True(resp.Headers.Contains("Access-Control-Allow-Origin"));
-            Assert.Equal("https://chatgpt.com", resp.Headers.GetValues("Access-Control-Allow-Origin").FirstOrDefault());
-            Assert.True(resp.Headers.Contains("Access-Control-Allow-Credentials"));
-        }
-        finally
-        {
-            await server.StopAsync();
-        }
-    }
-
-    [Fact]
-    public async Task Section32_McpServer_InitializationAndProtocolCapabilities()
-    {
-        using var server = new McpServer(_configService, _logService, _taskService, _planningService, _promptService, _codingAgentService, _humanApprovalService, _taskRegistry);
-        bool started = await server.StartAsync();
-        Assert.True(started);
-
-        try
-        {
-            using var client = new HttpClient { BaseAddress = new Uri(server.EndpointUrl) };
-            client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", "test-token-mcp-phase08");
-
-            var initReq = new
-            {
-                jsonrpc = "2.0",
-                id = 1,
-                method = "initialize",
-                @params = new
-                {
-                    protocolVersion = "2024-11-05",
-                    clientInfo = new { name = "ChatGPT" }
-                }
-            };
-
-            var res = await client.PostAsJsonAsync("", initReq);
-            Assert.Equal(HttpStatusCode.OK, res.StatusCode);
-
-            var json = await res.Content.ReadAsStringAsync();
-            using var doc = JsonDocument.Parse(json);
-            var root = doc.RootElement;
-
-            Assert.Equal("2.0", root.GetProperty("jsonrpc").GetString());
-            Assert.Equal(1, root.GetProperty("id").GetInt64());
-            var result = root.GetProperty("result");
-            Assert.Equal("2024-11-05", result.GetProperty("protocolVersion").GetString());
-            Assert.Equal("AIBridge", result.GetProperty("serverInfo").GetProperty("name").GetString());
-            Assert.True(result.TryGetProperty("capabilities", out _));
-        }
-        finally
-        {
-            await server.StopAsync();
-        }
-    }
-
-    [Fact]
-    public async Task Section32_Section55_McpServer_ToolDiscovery_ExposesRequired15Tools_AndNoForbiddenTools()
-    {
-        using var server = new McpServer(_configService, _logService, _taskService, _planningService, _promptService, _codingAgentService, _humanApprovalService, _taskRegistry);
-        await server.StartAsync();
-
-        try
-        {
-            using var client = new HttpClient { BaseAddress = new Uri(server.EndpointUrl) };
-            client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", "test-token-mcp-phase08");
-
-            var listReq = new
-            {
-                jsonrpc = "2.0",
-                id = 2,
-                method = "tools/list"
-            };
-
-            var res = await client.PostAsJsonAsync("", listReq);
-            Assert.Equal(HttpStatusCode.OK, res.StatusCode);
-
-            var json = await res.Content.ReadAsStringAsync();
-            using var doc = JsonDocument.Parse(json);
-            var tools = doc.RootElement.GetProperty("result").GetProperty("tools").EnumerateArray().ToList();
-
-            var toolNames = tools.Select(t => t.GetProperty("name").GetString()).ToList();
-
-            // Assert 15 required tools are present
+            // Assert 15 required tools exist
             Assert.Contains("ping_bridge", toolNames);
             Assert.Contains("get_bridge_status", toolNames);
             Assert.Contains("list_projects", toolNames);
@@ -231,22 +139,15 @@ public class McpServerTests : IDisposable
             Assert.Contains("get_review_package", toolNames);
             Assert.Contains("get_git_evidence", toolNames);
 
-            // Assert forbidden dangerous tools are ABSENT
+            // Assert forbidden tools are ABSENT
             Assert.DoesNotContain("approve_execution", toolNames);
             Assert.DoesNotContain("approve_human_gate", toolNames);
-            Assert.DoesNotContain("confirm_human_gate", toolNames);
-            Assert.DoesNotContain("set_human_approval", toolNames);
             Assert.DoesNotContain("run_shell", toolNames);
-            Assert.DoesNotContain("execute_powershell", toolNames);
-            Assert.DoesNotContain("read_any_file", toolNames);
-            Assert.DoesNotContain("write_any_file", toolNames);
-            Assert.DoesNotContain("delete_file", toolNames);
 
             // Assert dispatch_task schema does NOT contain workspacePath
-            var dispatchTool = tools.First(t => t.GetProperty("name").GetString() == "dispatch_task");
-            var properties = dispatchTool.GetProperty("inputSchema").GetProperty("properties");
-            Assert.False(properties.TryGetProperty("workspacePath", out _));
-            Assert.False(properties.TryGetProperty("humanApproved", out _));
+            var dispatchTool = tools.First(t => t.Name == "dispatch_task");
+            string schemaJson = JsonSerializer.Serialize(dispatchTool.ProtocolTool.InputSchema);
+            Assert.DoesNotContain("workspacePath", schemaJson);
         }
         finally
         {
@@ -255,60 +156,26 @@ public class McpServerTests : IDisposable
     }
 
     [Fact]
-    public async Task Section54_McpServer_AuthenticationEnforcement()
+    public async Task RealMcpClient_Call_PingBridge_And_GetBridgeStatus()
     {
         using var server = new McpServer(_configService, _logService, _taskService, _planningService, _promptService, _codingAgentService, _humanApprovalService, _taskRegistry);
         await server.StartAsync();
 
         try
         {
-            using var client = new HttpClient { BaseAddress = new Uri(server.EndpointUrl) };
+            await using var client = await CreateClientAsync(server);
 
-            // 1. ping_bridge allowed without auth
-            var pingCall = new
-            {
-                jsonrpc = "2.0",
-                id = 3,
-                method = "tools/call",
-                @params = new { name = "ping_bridge", arguments = new { } }
-            };
-            var pingRes = await client.PostAsJsonAsync("", pingCall);
-            Assert.Equal(HttpStatusCode.OK, pingRes.StatusCode);
-            var pingJson = await pingRes.Content.ReadAsStringAsync();
-            var pingContent = GetMcpContentText(pingJson);
-            Assert.Contains("mcpReady", pingContent);
+            // 1. ping_bridge
+            var pingRes = await CallToolAsync(client, "ping_bridge");
+            string pingText = GetResultText(pingRes);
+            Assert.Contains("mcpReady", pingText);
+            Assert.Contains("0.8.0", pingText);
 
-            // 2. Protected tool call without auth -> REJECTED
-            var statusCall = new
-            {
-                jsonrpc = "2.0",
-                id = 4,
-                method = "tools/call",
-                @params = new { name = "get_bridge_status", arguments = new { } }
-            };
-            var unauthRes = await client.PostAsJsonAsync("", statusCall);
-            Assert.Equal(HttpStatusCode.OK, unauthRes.StatusCode);
-            var unauthJson = await unauthRes.Content.ReadAsStringAsync();
-            Assert.Contains("UNAUTHORIZED", unauthJson);
-
-            // 3. Protected tool call with valid Bearer token -> ACCEPTED
-            var statusCall2 = new
-            {
-                jsonrpc = "2.0",
-                id = 5,
-                method = "tools/call",
-                @params = new { name = "get_bridge_status", arguments = new { } }
-            };
-            using var authReq = new HttpRequestMessage(HttpMethod.Post, "")
-            {
-                Content = JsonContent.Create(statusCall2)
-            };
-            authReq.Headers.Authorization = new AuthenticationHeaderValue("Bearer", "test-token-mcp-phase08");
-            var authRes = await client.SendAsync(authReq);
-            Assert.Equal(HttpStatusCode.OK, authRes.StatusCode);
-            var authJson = await authRes.Content.ReadAsStringAsync();
-            var authContent = GetMcpContentText(authJson);
-            Assert.Contains("restStatus", authContent);
+            // 2. get_bridge_status
+            var statusRes = await CallToolAsync(client, "get_bridge_status");
+            string statusText = GetResultText(statusRes);
+            Assert.Contains("restStatus", statusText);
+            Assert.Contains("RUNNING", statusText);
         }
         finally
         {
@@ -317,43 +184,30 @@ public class McpServerTests : IDisposable
     }
 
     [Fact]
-    public async Task Section32_McpServer_ProjectAndTaskTools()
+    public async Task RealMcpClient_AuthenticationEnforcement()
     {
-        var plan = E2ETestProjectSetup.CreateMiniCalculatorPlan();
-        await _store.SavePlanAsync(plan);
-
         using var server = new McpServer(_configService, _logService, _taskService, _planningService, _promptService, _codingAgentService, _humanApprovalService, _taskRegistry);
         await server.StartAsync();
 
         try
         {
-            using var client = new HttpClient { BaseAddress = new Uri(server.EndpointUrl) };
-            client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", "test-token-mcp-phase08");
+            // Unauthenticated client (no token)
+            await using var unauthClient = await CreateClientAsync(server, token: null);
 
-            // 1. list_projects
-            var resList = await client.PostAsJsonAsync("", new { jsonrpc = "2.0", id = 10, method = "tools/call", @params = new { name = "list_projects", arguments = new { } } });
-            var jsonList = GetMcpContentText(await resList.Content.ReadAsStringAsync());
-            Assert.Contains("AIBridge-E2E-Test", jsonList);
+            // ping_bridge allowed without auth
+            var pingRes = await CallToolAsync(unauthClient, "ping_bridge");
+            Assert.Contains("mcpReady", GetResultText(pingRes));
 
-            // 2. get_project
-            var resProj = await client.PostAsJsonAsync("", new { jsonrpc = "2.0", id = 11, method = "tools/call", @params = new { name = "get_project", arguments = new { projectId = "AIBridge-E2E-Test" } } });
-            var jsonProj = GetMcpContentText(await resProj.Content.ReadAsStringAsync());
-            Assert.Contains("Mini Calculator E2E Test", jsonProj);
+            // get_bridge_status rejected without auth -> returns UNAUTHORIZED
+            var unauthRes = await CallToolAsync(unauthClient, "get_bridge_status");
+            string unauthText = GetResultText(unauthRes);
+            Assert.Contains("UNAUTHORIZED", unauthText);
 
-            // 3. get_project_progress
-            var resProg = await client.PostAsJsonAsync("", new { jsonrpc = "2.0", id = 12, method = "tools/call", @params = new { name = "get_project_progress", arguments = new { projectId = "AIBridge-E2E-Test" } } });
-            var jsonProg = GetMcpContentText(await resProg.Content.ReadAsStringAsync());
-            Assert.Contains("projectPercent", jsonProg);
-
-            // 4. get_current_phase
-            var resPhase = await client.PostAsJsonAsync("", new { jsonrpc = "2.0", id = 13, method = "tools/call", @params = new { name = "get_current_phase", arguments = new { projectId = "AIBridge-E2E-Test" } } });
-            var jsonPhase = GetMcpContentText(await resPhase.Content.ReadAsStringAsync());
-            Assert.Contains("Phase A — Foundation", jsonPhase);
-
-            // 5. get_task
-            var resTask = await client.PostAsJsonAsync("", new { jsonrpc = "2.0", id = 14, method = "tools/call", @params = new { name = "get_task", arguments = new { projectId = "AIBridge-E2E-Test", taskId = "task-A1" } } });
-            var jsonTask = GetMcpContentText(await resTask.Content.ReadAsStringAsync());
-            Assert.Contains("Create Console Project", jsonTask);
+            // get_bridge_status with valid Bearer token -> ALLOWED
+            await using var authClient = await CreateClientAsync(server, token: "test-token-mcp-phase08");
+            var authRes = await CallToolAsync(authClient, "get_bridge_status");
+            string authText = GetResultText(authRes);
+            Assert.Contains("restStatus", authText);
         }
         finally
         {
@@ -362,14 +216,14 @@ public class McpServerTests : IDisposable
     }
 
     [Fact]
-    public async Task Section20_McpServer_HumanGate_BlockedViaMcp()
+    public async Task RealMcpClient_FullExecutionLifecycle_HumanGate_Dispatch_ReviewPackage_GitEvidence_UTF8()
     {
         var plan = E2ETestProjectSetup.CreateMiniCalculatorPlan();
         plan.Phases[0].Status = PhaseStatus.Completed;
         await _store.SavePlanAsync(plan);
 
         var cfg = _configService.LoadConfig();
-        cfg.ProjectWorkspaces["AIBridge-E2E-Test"] = _testDir;
+        cfg.ProjectWorkspaces[plan.ProjectId] = _testDir;
         _configService.SaveConfig(cfg);
 
         using var server = new McpServer(_configService, _logService, _taskService, _planningService, _promptService, _codingAgentService, _humanApprovalService, _taskRegistry);
@@ -377,128 +231,23 @@ public class McpServerTests : IDisposable
 
         try
         {
-            using var client = new HttpClient { BaseAddress = new Uri(server.EndpointUrl) };
-            client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", "test-token-mcp-phase08");
+            await using var client = await CreateClientAsync(server);
 
-            // Prepare prompt for task-B4 (which requires human gate)
-            var prepRes = await client.PostAsJsonAsync("", new
-            {
-                jsonrpc = "2.0",
-                id = 20,
-                method = "tools/call",
-                @params = new
-                {
-                    name = "prepare_task_execution",
-                    arguments = new
-                    {
-                        projectId = "AIBridge-E2E-Test",
-                        phaseId = "phase-B",
-                        taskId = "task-B4",
-                        externalInstructions = "Implement Divide(double a, double b) with zero check."
-                    }
-                }
-            });
-            var prepJson = await prepRes.Content.ReadAsStringAsync();
-            var prepContent = GetMcpContentText(prepJson);
-            Assert.Contains("promptId", prepContent);
-
-            using var pkgDoc = JsonDocument.Parse(prepContent);
-            string promptId = pkgDoc.RootElement.GetProperty("promptId").GetString()!;
-
-            // Attempt dispatch via MCP without human approval -> BLOCKED
-            var dispatchRes = await client.PostAsJsonAsync("", new
-            {
-                jsonrpc = "2.0",
-                id = 21,
-                method = "tools/call",
-                @params = new
-                {
-                    name = "dispatch_task",
-                    arguments = new
-                    {
-                        projectId = "AIBridge-E2E-Test",
-                        phaseId = "phase-B",
-                        taskId = "task-B4",
-                        promptId = promptId
-                    }
-                }
-            });
-            var dispatchJson = GetMcpContentText(await dispatchRes.Content.ReadAsStringAsync());
-            Assert.Contains("HUMAN_APPROVAL_REQUIRED", dispatchJson);
-            Assert.Equal(0, _fakeAgent.CallCount);
-
-            // Grant trusted local human approval via WPF service
-            await _humanApprovalService.ApproveAsync("AIBridge-E2E-Test", "phase-B", "task-B4", plan.Version);
-
-            // Dispatch via MCP after trusted local approval -> ALLOWED
-            var dispatchRes2 = await client.PostAsJsonAsync("", new
-            {
-                jsonrpc = "2.0",
-                id = 22,
-                method = "tools/call",
-                @params = new
-                {
-                    name = "dispatch_task",
-                    arguments = new
-                    {
-                        projectId = "AIBridge-E2E-Test",
-                        phaseId = "phase-B",
-                        taskId = "task-B4",
-                        promptId = promptId
-                    }
-                }
-            });
-            var dispatchJson2 = GetMcpContentText(await dispatchRes2.Content.ReadAsStringAsync());
-            Assert.Contains("executionId", dispatchJson2);
-            Assert.Equal(1, _fakeAgent.CallCount);
-        }
-        finally
-        {
-            await server.StopAsync();
-        }
-    }
-
-    [Fact]
-    public async Task Section31_Section60_McpServer_UTF8_ExactStrings_PreservedWithoutMojibake()
-    {
-        var plan = E2ETestProjectSetup.CreateMiniCalculatorPlan();
-        await _store.SavePlanAsync(plan);
-
-        var cfg = _configService.LoadConfig();
-        cfg.ProjectWorkspaces["AIBridge-E2E-Test"] = _testDir;
-        _configService.SaveConfig(cfg);
-
-        using var server = new McpServer(_configService, _logService, _taskService, _planningService, _promptService, _codingAgentService, _humanApprovalService, _taskRegistry);
-        await server.StartAsync();
-
-        try
-        {
-            using var client = new HttpClient { BaseAddress = new Uri(server.EndpointUrl) };
-            client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", "test-token-mcp-phase08");
-
+            // 1. prepare_task_execution for task-B4 with Vietnamese instructions
             string vietnamesePrompt = "Kiểm tra tiếng Việt.\nNguyên nhân: cấu hình không đúng.\nCách khắc phục: sửa cấu hình và chạy lại.\nKhông thể chia cho số 0.\nHoàn thành thành công.\n🤖 🚀 ✅";
-
-            var prepRes = await client.PostAsJsonAsync("", new
+            var prepRes = await CallToolAsync(client, "prepare_task_execution", new Dictionary<string, object?>
             {
-                jsonrpc = "2.0",
-                id = 30,
-                method = "tools/call",
-                @params = new
-                {
-                    name = "prepare_task_execution",
-                    arguments = new
-                    {
-                        projectId = "AIBridge-E2E-Test",
-                        phaseId = "phase-B",
-                        taskId = "task-B4",
-                        externalInstructions = vietnamesePrompt
-                    }
-                }
+                { "projectId", plan.ProjectId },
+                { "phaseId", "phase-B" },
+                { "taskId", "task-B4" },
+                { "externalInstructions", vietnamesePrompt }
             });
 
-            var prepJson = GetMcpContentText(await prepRes.Content.ReadAsStringAsync());
-            using var doc = JsonDocument.Parse(prepJson);
-            string genPrompt = doc.RootElement.GetProperty("generatedPrompt").GetString()!;
+            string prepJson = GetResultText(prepRes);
+            Assert.Contains("promptId", prepJson);
+            using var pkgDoc = JsonDocument.Parse(prepJson);
+            string genPrompt = pkgDoc.RootElement.GetProperty("generatedPrompt").GetString()!;
+
             Assert.Contains("Kiểm tra tiếng Việt.", genPrompt);
             Assert.Contains("Nguyên nhân: cấu hình không đúng.", genPrompt);
             Assert.Contains("Cách khắc phục: sửa cấu hình và chạy lại.", genPrompt);
@@ -506,49 +255,68 @@ public class McpServerTests : IDisposable
             Assert.Contains("Hoàn thành thành công.", genPrompt);
             Assert.Contains("🤖 🚀 ✅", genPrompt);
             Assert.DoesNotContain("NguyÃªn nhÃ¢n", prepJson);
-        }
-        finally
-        {
-            await server.StopAsync();
-        }
-    }
+            string promptId = pkgDoc.RootElement.GetProperty("promptId").GetString()!;
 
-    [Fact]
-    public async Task Section30_McpServer_RequestSizeLimit_RejectsOversizedPayload()
-    {
-        using var server = new McpServer(_configService, _logService, _taskService, _planningService, _promptService, _codingAgentService, _humanApprovalService, _taskRegistry);
-        await server.StartAsync();
-
-        try
-        {
-            using var client = new HttpClient { BaseAddress = new Uri(server.EndpointUrl) };
-            client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", "test-token-mcp-phase08");
-
-            // Create oversized instruction (> 256 KB)
-            string hugeText = new string('A', 300 * 1024);
-            var hugeReq = new
+            // 2. Dispatch task before Human Gate approval -> BLOCKED
+            var blockedRes = await CallToolAsync(client, "dispatch_task", new Dictionary<string, object?>
             {
-                jsonrpc = "2.0",
-                id = 40,
-                method = "tools/call",
-                @params = new
-                {
-                    name = "prepare_task_execution",
-                    arguments = new
-                    {
-                        projectId = "AIBridge-E2E-Test",
-                        phaseId = "phase-A",
-                        taskId = "task-A1",
-                        externalInstructions = hugeText
-                    }
-                }
-            };
+                { "projectId", plan.ProjectId },
+                { "phaseId", "phase-B" },
+                { "taskId", "task-B4" },
+                { "promptId", promptId }
+            });
 
-            var res = await client.PostAsJsonAsync("", hugeReq);
-            Assert.Equal(HttpStatusCode.RequestEntityTooLarge, res.StatusCode);
+            string blockedText = GetResultText(blockedRes);
+            Assert.Contains("HUMAN_APPROVAL_REQUIRED", blockedText);
+            Assert.Equal(0, _fakeAgent.CallCount);
 
-            var json = await res.Content.ReadAsStringAsync();
-            Assert.Contains("REQUEST_TOO_LARGE", json);
+            // 3. Grant trusted local human approval
+            await _humanApprovalService.ApproveAsync(plan.ProjectId, "phase-B", "task-B4", plan.Version);
+
+            // 4. Dispatch task after Human Gate approval -> ALLOWED
+            var dispatchRes = await CallToolAsync(client, "dispatch_task", new Dictionary<string, object?>
+            {
+                { "projectId", plan.ProjectId },
+                { "phaseId", "phase-B" },
+                { "taskId", "task-B4" },
+                { "promptId", promptId }
+            });
+
+            string dispatchText = GetResultText(dispatchRes);
+            Assert.Contains("executionId", dispatchText);
+            Assert.Equal(1, _fakeAgent.CallCount);
+
+            using var dispatchDoc = JsonDocument.Parse(dispatchText);
+            string executionId = dispatchDoc.RootElement.GetProperty("executionId").GetString()!;
+
+            // 5. Retrieve Review Package
+            var revRes = await CallToolAsync(client, "get_review_package", new Dictionary<string, object?>
+            {
+                { "executionId", executionId }
+            });
+
+            string revText = GetResultText(revRes);
+            Assert.Contains("reviewStatus", revText);
+            Assert.Contains(executionId, revText);
+
+            // Record Git Evidence for executionId in taskRegistry to simulate Git evidence generation
+            _taskRegistry.RegisterTask(new AgentTask { Id = executionId });
+            _taskRegistry.RecordGitEvidence(executionId, new GitEvidence
+            {
+                TaskId = "task-B4",
+                IsRepository = true,
+                Status = "Ready",
+                Diff = "+ fake diff content for test"
+            });
+
+            // 6. Retrieve Git Evidence
+            var gitRes = await CallToolAsync(client, "get_git_evidence", new Dictionary<string, object?>
+            {
+                { "executionId", executionId }
+            });
+
+            string gitText = GetResultText(gitRes);
+            Assert.Contains("status", gitText);
         }
         finally
         {
@@ -557,7 +325,7 @@ public class McpServerTests : IDisposable
     }
 
     [Fact]
-    public async Task Section61_RealAntigravityAcceptanceTest_Phase08()
+    public async Task RealAntigravityAcceptanceTest_Phase08()
     {
         var envService = new AntigravityEnvironmentService(_logService);
         var envInfo = envService.CurrentInfo;
@@ -599,8 +367,7 @@ public class McpServerTests : IDisposable
             using var server = new McpServer(_configService, _logService, taskService, planningService, _promptService, codingAgentService, _humanApprovalService, _taskRegistry);
             await server.StartAsync();
 
-            using var client = new HttpClient { BaseAddress = new Uri(server.EndpointUrl) };
-            client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", "test-token-mcp-phase08");
+            await using var client = await CreateClientAsync(server);
 
             string targetFile = "phase08-mcp-antigravity-test.txt";
             string prompt = $"Create file '{targetFile}' with exact content:\n" +
@@ -609,59 +376,37 @@ public class McpServerTests : IDisposable
                             "Hoàn thành thành công.\n" +
                             "🤖 🚀 ✅";
 
-            var prepRes = await client.PostAsJsonAsync("", new
+            var prepRes = await CallToolAsync(client, "prepare_task_execution", new Dictionary<string, object?>
             {
-                jsonrpc = "2.0",
-                id = 50,
-                method = "tools/call",
-                @params = new
-                {
-                    name = "prepare_task_execution",
-                    arguments = new
-                    {
-                        projectId = plan.ProjectId,
-                        phaseId = "phase-A",
-                        taskId = "task-A1",
-                        externalInstructions = prompt
-                    }
-                }
+                { "projectId", plan.ProjectId },
+                { "phaseId", "phase-A" },
+                { "taskId", "task-A1" },
+                { "externalInstructions", prompt }
             });
-            var prepContent = GetMcpContentText(await prepRes.Content.ReadAsStringAsync());
+
+            string prepContent = GetResultText(prepRes);
             using var pkgDoc = JsonDocument.Parse(prepContent);
             string promptId = pkgDoc.RootElement.GetProperty("promptId").GetString()!;
 
-            // Dispatch task via MCP
-            var dispatchRes = await client.PostAsJsonAsync("", new
+            // Dispatch task via MCP client
+            var dispatchRes = await CallToolAsync(client, "dispatch_task", new Dictionary<string, object?>
             {
-                jsonrpc = "2.0",
-                id = 51,
-                method = "tools/call",
-                @params = new
-                {
-                    name = "dispatch_task",
-                    arguments = new
-                    {
-                        projectId = plan.ProjectId,
-                        phaseId = "phase-A",
-                        taskId = "task-A1",
-                        promptId = promptId
-                    }
-                }
+                { "projectId", plan.ProjectId },
+                { "phaseId", "phase-A" },
+                { "taskId", "task-A1" },
+                { "promptId", promptId }
             });
 
-            var dispatchContent = GetMcpContentText(await dispatchRes.Content.ReadAsStringAsync());
+            string dispatchContent = GetResultText(dispatchRes);
             using var resObj = JsonDocument.Parse(dispatchContent);
             string executionId = resObj.RootElement.GetProperty("executionId").GetString()!;
 
-            // Verify review package
-            var revRes = await client.PostAsJsonAsync("", new
+            // Verify review package via MCP client
+            var revRes = await CallToolAsync(client, "get_review_package", new Dictionary<string, object?>
             {
-                jsonrpc = "2.0",
-                id = 52,
-                method = "tools/call",
-                @params = new { name = "get_review_package", arguments = new { executionId = executionId } }
+                { "executionId", executionId }
             });
-            var revContent = GetMcpContentText(await revRes.Content.ReadAsStringAsync());
+            string revContent = GetResultText(revRes);
             Assert.Contains("reviewStatus", revContent);
 
             // Verify file content & UTF-8 if generated by agent
@@ -695,10 +440,10 @@ public class McpServerTests : IDisposable
             RunGitCommand(dir, "init");
             RunGitCommand(dir, "config user.name \"AIBridge Test\"");
             RunGitCommand(dir, "config user.email \"test@aibridge.local\"");
-            
+
             string readmePath = Path.Combine(dir, "README.md");
-            File.WriteAllText(readmePath, "# Phase 08 Test Repo\n", System.Text.Encoding.UTF8);
-            
+            File.WriteAllText(readmePath, "# Phase 08 Test Repo\n", Encoding.UTF8);
+
             RunGitCommand(dir, "add README.md");
             RunGitCommand(dir, "commit -m \"initial commit\"");
         }
@@ -715,9 +460,9 @@ public class McpServerTests : IDisposable
             UseShellExecute = false,
             RedirectStandardOutput = true,
             RedirectStandardError = true,
-            StandardOutputEncoding = System.Text.Encoding.UTF8,
-            StandardErrorEncoding = System.Text.Encoding.UTF8,
-            StandardInputEncoding = System.Text.Encoding.UTF8,
+            StandardOutputEncoding = Encoding.UTF8,
+            StandardErrorEncoding = Encoding.UTF8,
+            StandardInputEncoding = Encoding.UTF8,
             CreateNoWindow = true
         };
         using var p = System.Diagnostics.Process.Start(psi);

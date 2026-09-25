@@ -60,6 +60,19 @@ public class TaskRegistry : ITaskRegistry
             {
                 record.GitEvidence = evidence;
             }
+            return;
+        }
+
+        lock (_lock)
+        {
+            var match = _records.Values
+                .FirstOrDefault(r => string.Equals(r.ExecutionId, taskId, StringComparison.OrdinalIgnoreCase) ||
+                                     string.Equals(r.AgentTaskId, taskId, StringComparison.OrdinalIgnoreCase) ||
+                                     string.Equals(r.TaskId, taskId, StringComparison.OrdinalIgnoreCase));
+            if (match != null)
+            {
+                match.GitEvidence = evidence;
+            }
         }
     }
 
