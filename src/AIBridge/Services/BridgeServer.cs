@@ -1073,48 +1073,6 @@ public class BridgeServer : IBridgeServer
             return Results.Ok(result);
         });
 
-        // POST /api/projects/{projectId}/phases/{phaseId}/tasks/{taskId}/approve-execution
-        // LOCAL HUMAN CONTROL
-        // NOT FOR CHATGPT/MCP TOOL EXPOSURE
-        app.MapPost("/api/projects/{projectId}/phases/{phaseId}/tasks/{taskId}/approve-execution", async (string projectId, string phaseId, string taskId, HttpContext context) =>
-        {
-            var config = _configService.LoadConfig();
-            var token = ExtractToken(context.Request);
-            if (!ValidateToken(token, config.ApiToken))
-            {
-                return Results.Json(new ErrorResponse { Error = "UNAUTHORIZED", Message = "Invalid or missing Bearer token." }, statusCode: StatusCodes.Status401Unauthorized);
-            }
-
-            var plan = await _planningService.GetPlanAsync(projectId);
-            if (plan == null)
-            {
-                return Results.Json(new ErrorResponse { Error = "PLAN_NOT_FOUND", Message = $"Project plan '{projectId}' not found." }, statusCode: StatusCodes.Status404NotFound);
-            }
-
-            var phase = plan.Phases.FirstOrDefault(p => string.Equals(p.PhaseId, phaseId, StringComparison.OrdinalIgnoreCase));
-            if (phase == null)
-            {
-                return Results.Json(new ErrorResponse { Error = "PHASE_NOT_FOUND", Message = $"Phase '{phaseId}' not found in project '{projectId}'." }, statusCode: StatusCodes.Status404NotFound);
-            }
-
-            var task = phase.Tasks.FirstOrDefault(t => string.Equals(t.TaskId, taskId, StringComparison.OrdinalIgnoreCase));
-            if (task == null)
-            {
-                return Results.Json(new ErrorResponse { Error = "TASK_NOT_FOUND", Message = $"Task '{taskId}' not found in phase '{phaseId}'." }, statusCode: StatusCodes.Status404NotFound);
-            }
-
-            var approval = await _humanApprovalService.ApproveAsync(new HumanApprovalRequest
-            {
-                ProjectId = plan.ProjectId,
-                PhaseId = phase.PhaseId,
-                TaskId = task.TaskId,
-                PlanVersion = plan.Version,
-                ApprovedBy = "LocalHuman"
-            }, context.RequestAborted);
-
-            return Results.Ok(approval);
-        });
-
         // GET /api/executions/current
         app.MapGet("/api/executions/current", (HttpContext context) =>
         {

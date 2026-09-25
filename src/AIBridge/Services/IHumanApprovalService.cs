@@ -11,10 +11,22 @@ public interface IHumanApprovalService
         string phaseId,
         string taskId,
         int planVersion,
+        string? promptId = null,
+        string? promptHash = null,
         CancellationToken cancellationToken = default);
 
     Task<HumanApprovalRecord> ApproveAsync(
         HumanApprovalRequest request,
+        CancellationToken cancellationToken = default);
+
+    Task<HumanApprovalRecord> ApproveAsync(
+        string projectId,
+        string phaseId,
+        string taskId,
+        int planVersion,
+        string? promptId = null,
+        string? promptHash = null,
+        string approvedBy = "LocalHuman",
         CancellationToken cancellationToken = default);
 
     Task RevokeAsync(

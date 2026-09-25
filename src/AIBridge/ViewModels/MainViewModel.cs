@@ -519,6 +519,9 @@ public class MainViewModel : ObservableObject
     public ICommand GeneratePromptCommand { get; }
     public ICommand DispatchTaskCommand { get; }
     public ICommand CancelExecutionCommand { get; }
+    public ICommand ApproveExecutionCommand { get; }
+
+    public Func<string, string, bool>? ConfirmationDialogHandler { get; set; }
 
     private readonly IHumanApprovalService _humanApprovalService;
 
@@ -616,6 +619,10 @@ public class MainViewModel : ObservableObject
         GeneratePromptCommand = new AsyncRelayCommand(ExecuteGeneratePromptAsync);
         DispatchTaskCommand = new AsyncRelayCommand(ExecuteDispatchTaskAsync);
         CancelExecutionCommand = new RelayCommand(ExecuteCancelExecution);
+        ApproveExecutionCommand = new AsyncRelayCommand(ExecuteApproveExecutionAsync, CanApproveExecution);
+
+        ConfirmationDialogHandler = (message, title) =>
+            System.Windows.MessageBox.Show(message, title, System.Windows.MessageBoxButton.YesNo, System.Windows.MessageBoxImage.Question) == System.Windows.MessageBoxResult.Yes;
 
         _taskService.CurrentTaskChanged += OnCurrentTaskChanged;
         _taskService.TaskUpdated += OnTaskUpdated;
@@ -1502,6 +1509,51 @@ public class MainViewModel : ObservableObject
     {
         _codingAgentService.CancelCurrentExecution();
         PlanningStatusText = "Cancellation requested for coding agent execution.";
+    }
+
+    public bool CanApproveExecution()
+    {
+        if (CurrentProjectPlan == null) return false;
+        if (SelectedNode is not TaskPlan task) return false;
+        if (!task.RequiresHumanApproval) return false;
+        if (string.IsNullOrEmpty(task.PhaseId) || string.IsNullOrEmpty(task.TaskId)) return false;
+        return true;
+    }
+
+    private async Task ExecuteApproveExecutionAsync()
+    {
+        if (!CanApproveExecution()) return;
+        var task = (TaskPlan)SelectedNode!;
+        var plan = CurrentProjectPlan!;
+
+        string message = $"HUMAN APPROVAL REQUIRED\n\nProject:\n{plan.ProjectId}\n\nPhase:\n{task.PhaseId}\n\nTask:\n{task.TaskId}\n\nPlan:\nv{plan.Version}\n\nApprove this execution?";
+        string title = "Human Approval Required";
+
+        bool confirmed = ConfirmationDialogHandler?.Invoke(message, title) ?? false;
+        if (!confirmed)
+        {
+            _logService.LogInfo($"Human approval cancelled for Task '{task.TaskId}'.");
+            return;
+        }
+
+        string? promptId = CurrentPromptPackage?.TaskId == task.TaskId && CurrentPromptPackage?.PhaseId == task.PhaseId
+            ? CurrentPromptPackage.PromptId
+            : null;
+        string? promptHash = CurrentPromptPackage?.TaskId == task.TaskId && CurrentPromptPackage?.PhaseId == task.PhaseId
+            ? CurrentPromptPackage.PromptHash
+            : null;
+
+        var record = await _humanApprovalService.ApproveAsync(
+            plan.ProjectId,
+            task.PhaseId,
+            task.TaskId,
+            plan.Version,
+            promptId,
+            promptHash,
+            approvedBy: "LocalHuman");
+
+        PlanningStatusText = $"Human approval recorded for Task '{task.TaskId}' (Approval ID: {record.ApprovalId})";
+        _logService.LogInfo($"Trusted HumanApprovalRecord created via local WPF path for Task {task.TaskId}.");
     }
 
     private void UpdateProgressFromPlan(ProjectPlan? plan)

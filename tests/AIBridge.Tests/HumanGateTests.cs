@@ -4,11 +4,11 @@ using System.Net;
 using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
-using System.Text.Json;
 using System.Threading.Tasks;
 using AIBridge.Api.Dtos;
 using AIBridge.Models;
 using AIBridge.Services;
+using AIBridge.ViewModels;
 using Xunit;
 
 namespace AIBridge.Tests;
@@ -24,6 +24,8 @@ public class HumanGateTests : IDisposable
     private readonly ExecutionPromptService _promptService;
     private readonly HumanApprovalService _humanApprovalService;
     private readonly CodingAgentService _service;
+    private readonly LogService _logService;
+    private readonly TaskRegistry _taskRegistry;
 
     public HumanGateTests()
     {
@@ -35,14 +37,14 @@ public class HumanGateTests : IDisposable
         _registry = new CodingAgentRegistry();
         _registry.RegisterAgent(_fakeAgent);
 
-        var logService = new LogService();
-        var taskRegistry = new TaskRegistry();
-        _taskService = new TaskService(logService, taskRegistry);
+        _logService = new LogService();
+        _taskRegistry = new TaskRegistry();
+        _taskService = new TaskService(_logService, _taskRegistry);
         _promptValidator = new PromptValidator();
-        _promptService = new ExecutionPromptService(_promptValidator, logService: logService);
+        _promptService = new ExecutionPromptService(_promptValidator, logService: _logService);
         _humanApprovalService = new HumanApprovalService();
 
-        _service = new CodingAgentService(_registry, _taskService, _store, _promptValidator, taskRegistry: taskRegistry, humanApprovalService: _humanApprovalService, logService: logService);
+        _service = new CodingAgentService(_registry, _taskService, _store, _promptValidator, taskRegistry: _taskRegistry, humanApprovalService: _humanApprovalService, logService: _logService);
     }
 
     public void Dispose()
@@ -120,28 +122,204 @@ public class HumanGateTests : IDisposable
     }
 
     [Fact]
-    public async Task TrustedHumanApproval_AllowsDispatch()
+    public async Task Section7_ApiCannotSelfApprove_Returns404_AndNoApprovalCreated()
+    {
+        var configService = new ConfigService(_logService);
+        var cfg = configService.LoadConfig();
+        cfg.BridgeHost = "127.0.0.1";
+        cfg.BridgePort = 9889;
+        cfg.ApiToken = "test-token-human-gate-api";
+        configService.SaveConfig(cfg);
+
+        var envService = new AntigravityEnvironmentService(_logService);
+        var runner = new AntigravityRunner(_logService, envService);
+        var plan = CreateProtectedPlan();
+        await _store.SavePlanAsync(plan);
+
+        var brainService = new AIBrainService(_logService, configService, new AIBrainProviderRegistry());
+        var planningService = new PlanningService(brainService, new PlanValidator(), _store);
+
+        var server = new BridgeServer(
+            configService, _logService, _taskService, _taskRegistry, envService, runner,
+            planningService: planningService,
+            executionPromptService: _promptService,
+            codingAgentRegistry: _registry,
+            codingAgentService: _service,
+            humanApprovalService: _humanApprovalService);
+
+        bool started = await server.StartAsync();
+        Assert.True(started);
+
+        try
+        {
+            using var client = new HttpClient { BaseAddress = new Uri("http://127.0.0.1:9889") };
+            client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", "test-token-human-gate-api");
+
+            // Attempt to invoke removed approval endpoint
+            var approveRes = await client.PostAsync("/api/projects/proj-human-07/phases/phase-01/tasks/task-01-01/approve-execution", null);
+            
+            // Endpoint is removed -> returns 404 NotFound
+            Assert.Equal(HttpStatusCode.NotFound, approveRes.StatusCode);
+
+            // Trusted HumanApprovalRecord MUST NOT be created
+            var validApproval = await _humanApprovalService.GetValidApprovalAsync("proj-human-07", "phase-01", "task-01-01", 1);
+            Assert.Null(validApproval);
+        }
+        finally
+        {
+            await server.StopAsync();
+        }
+    }
+
+    [Fact]
+    public async Task Section8_WpfLocalPath_ApproveExecutionCommand_CreatesTrustedRecordAndEnablesDispatch()
+    {
+        var plan = CreateProtectedPlan();
+        await _store.SavePlanAsync(plan);
+
+        var configService = new ConfigService(_logService);
+        var envService = new AntigravityEnvironmentService(_logService);
+        var runner = new AntigravityRunner(_logService, envService);
+        var server = new BridgeServer(configService, _logService, _taskService, _taskRegistry, envService, runner);
+
+        var brainService = new AIBrainService(_logService, configService, new AIBrainProviderRegistry());
+        var planningService = new PlanningService(brainService, new PlanValidator(), _store);
+
+        var vm = new MainViewModel(
+            configService: configService,
+            logService: _logService,
+            taskService: _taskService,
+            environmentService: envService,
+            antigravityRunner: runner,
+            bridgeServer: server,
+            humanApprovalService: _humanApprovalService,
+            planningService: planningService,
+            executionPromptService: _promptService,
+            codingAgentRegistry: _registry,
+            codingAgentService: _service
+        );
+
+        vm.CurrentProjectPlan = plan;
+        vm.WorkspacePath = _testDir;
+
+        var taskNode = plan.Phases[0].Tasks[0];
+        vm.SelectNodeDetails(taskNode);
+
+        // Set test handler to simulate clicking YES in WPF dialog
+        vm.ConfirmationDialogHandler = (msg, title) => true;
+
+        Assert.True(vm.CanApproveExecution());
+
+        // Execute command via WPF trusted local path
+        vm.ApproveExecutionCommand.Execute(null);
+
+        // Verify trusted HumanApprovalRecord was created
+        var approval = await _humanApprovalService.GetValidApprovalAsync(plan.ProjectId, "phase-01", "task-01-01", plan.Version);
+        Assert.NotNull(approval);
+        Assert.Equal("LocalHuman", approval.ApprovedBy);
+
+        // Prepare prompt and dispatch task -> Allowed
+        var pkg = await _promptService.PreparePromptPackageAsync(plan, "phase-01", "task-01-01", workspacePath: _testDir);
+        var result = await _service.DispatchTaskAsync(plan, "phase-01", "task-01-01", pkg, _testDir);
+
+        Assert.True(result.Success);
+        Assert.Equal(1, _fakeAgent.CallCount);
+    }
+
+    [Fact]
+    public async Task Section9_NoApprovalConsumption_WhenSlotBusy()
     {
         var plan = CreateProtectedPlan();
         await _store.SavePlanAsync(plan);
 
         var pkg = await _promptService.PreparePromptPackageAsync(plan, "phase-01", "task-01-01", workspacePath: _testDir);
 
-        // Create trusted approval
-        await _humanApprovalService.ApproveAsync(new HumanApprovalRequest
+        // Create valid human approval
+        await _humanApprovalService.ApproveAsync(plan.ProjectId, "phase-01", "task-01-01", plan.Version, pkg.PromptId, pkg.PromptHash, "LocalHuman");
+
+        // Occupy execution slot
+        bool slotAcquired = _taskService.TryAcquireExecutionSlot();
+        Assert.True(slotAcquired);
+
+        try
         {
-            ProjectId = plan.ProjectId,
-            PhaseId = "phase-01",
-            TaskId = "task-01-01",
-            PlanVersion = plan.Version,
-            ApprovedBy = "LocalHuman"
-        });
+            // Attempt dispatch -> fails due to CONCURRENCY_CONFLICT
+            var busyResult = await _service.DispatchTaskAsync(plan, "phase-01", "task-01-01", pkg, _testDir);
 
-        // Dispatch now allowed
-        var result = await _service.DispatchTaskAsync(plan, "phase-01", "task-01-01", pkg, _testDir);
+            Assert.False(busyResult.Success);
+            Assert.Equal(CodingAgentErrorCode.ConcurrencyConflict, busyResult.ErrorCode);
+            Assert.Equal(0, _fakeAgent.CallCount);
 
-        Assert.True(result.Success);
+            // Approval MUST remain valid
+            var validApproval = await _humanApprovalService.GetValidApprovalAsync(plan.ProjectId, "phase-01", "task-01-01", plan.Version, pkg.PromptId, pkg.PromptHash);
+            Assert.NotNull(validApproval);
+        }
+        finally
+        {
+            _taskService.ReleaseExecutionSlot();
+        }
+
+        // Slot released -> dispatch again
+        var retryResult = await _service.DispatchTaskAsync(plan, "phase-01", "task-01-01", pkg, _testDir);
+
+        Assert.True(retryResult.Success);
         Assert.Equal(1, _fakeAgent.CallCount);
+
+        // Now approval is consumed
+        var consumedApproval = await _humanApprovalService.GetValidApprovalAsync(plan.ProjectId, "phase-01", "task-01-01", plan.Version, pkg.PromptId, pkg.PromptHash);
+        Assert.Null(consumedApproval);
+    }
+
+    [Fact]
+    public async Task Section10_NoApprovalConsumption_WhenWorkspaceInvalid()
+    {
+        var plan = CreateProtectedPlan();
+        await _store.SavePlanAsync(plan);
+
+        var pkg = await _promptService.PreparePromptPackageAsync(plan, "phase-01", "task-01-01", workspacePath: _testDir);
+
+        // Create valid human approval
+        await _humanApprovalService.ApproveAsync(plan.ProjectId, "phase-01", "task-01-01", plan.Version, pkg.PromptId, pkg.PromptHash, "LocalHuman");
+
+        string invalidWorkspace = Path.Combine(_testDir, "non_existent_directory_" + Guid.NewGuid().ToString("N"));
+
+        // Attempt dispatch with invalid workspace
+        var result = await _service.DispatchTaskAsync(plan, "phase-01", "task-01-01", pkg, invalidWorkspace);
+
+        Assert.False(result.Success);
+        Assert.Equal(CodingAgentErrorCode.WorkspaceInvalid, result.ErrorCode);
+        Assert.Equal(0, _fakeAgent.CallCount);
+
+        // Approval MUST remain valid
+        var validApproval = await _humanApprovalService.GetValidApprovalAsync(plan.ProjectId, "phase-01", "task-01-01", plan.Version, pkg.PromptId, pkg.PromptHash);
+        Assert.NotNull(validApproval);
+    }
+
+    [Fact]
+    public async Task Section11_SuccessfulDispatchConsumesApproval()
+    {
+        var plan = CreateProtectedPlan();
+        await _store.SavePlanAsync(plan);
+
+        var pkg = await _promptService.PreparePromptPackageAsync(plan, "phase-01", "task-01-01", workspacePath: _testDir);
+
+        // Approve task
+        await _humanApprovalService.ApproveAsync(plan.ProjectId, "phase-01", "task-01-01", plan.Version, pkg.PromptId, pkg.PromptHash, "LocalHuman");
+
+        // First dispatch -> Consumes approval
+        var result1 = await _service.DispatchTaskAsync(plan, "phase-01", "task-01-01", pkg, _testDir);
+        Assert.True(result1.Success);
+        Assert.Equal(1, _fakeAgent.CallCount);
+
+        // Reset task status for second attempt
+        plan.Phases[0].Tasks[0].Status = TaskPlanStatus.NotStarted;
+        await _store.SavePlanAsync(plan);
+
+        // Dispatch again without new approval -> blocked
+        var result2 = await _service.DispatchTaskAsync(plan, "phase-01", "task-01-01", pkg, _testDir);
+        Assert.False(result2.Success);
+        Assert.Equal(CodingAgentErrorCode.HumanApprovalRequired, result2.ErrorCode);
+        Assert.Equal(1, _fakeAgent.CallCount); // Agent call count remains 1
     }
 
     [Fact]
@@ -154,13 +332,7 @@ public class HumanGateTests : IDisposable
         var pkg2 = await _promptService.PreparePromptPackageAsync(plan, "phase-01", "task-01-02", workspacePath: _testDir);
 
         // Approve task-01-01
-        await _humanApprovalService.ApproveAsync(new HumanApprovalRequest
-        {
-            ProjectId = plan.ProjectId,
-            PhaseId = "phase-01",
-            TaskId = "task-01-01",
-            PlanVersion = plan.Version
-        });
+        await _humanApprovalService.ApproveAsync(plan.ProjectId, "phase-01", "task-01-01", plan.Version);
 
         // Attempt dispatch task-01-02 -> Blocked
         var resultTask2 = await _service.DispatchTaskAsync(plan, "phase-01", "task-01-02", pkg2, _testDir);
@@ -178,13 +350,7 @@ public class HumanGateTests : IDisposable
         await _store.SavePlanAsync(plan);
 
         // Approve task-01-01 on plan v1
-        await _humanApprovalService.ApproveAsync(new HumanApprovalRequest
-        {
-            ProjectId = plan.ProjectId,
-            PhaseId = "phase-01",
-            TaskId = "task-01-01",
-            PlanVersion = 1
-        });
+        await _humanApprovalService.ApproveAsync(plan.ProjectId, "phase-01", "task-01-01", 1);
 
         // Replan updates plan to v2
         plan.Version = 2;
@@ -201,101 +367,30 @@ public class HumanGateTests : IDisposable
     }
 
     [Fact]
-    public async Task Approval_SingleUseConsumption()
+    public async Task Section5_Approval_PromptHashScoped_ModifiedPromptRejected()
     {
         var plan = CreateProtectedPlan();
         await _store.SavePlanAsync(plan);
 
-        var pkg = await _promptService.PreparePromptPackageAsync(plan, "phase-01", "task-01-01", workspacePath: _testDir);
+        // Approve with a specific promptId and promptHash
+        await _humanApprovalService.ApproveAsync(plan.ProjectId, "phase-01", "task-01-01", plan.Version, "prompt-v1", "hash-original-123", "LocalHuman");
 
-        // Approve task
-        await _humanApprovalService.ApproveAsync(new HumanApprovalRequest
+        var pkgModified = new ExecutionPromptPackage
         {
             ProjectId = plan.ProjectId,
             PhaseId = "phase-01",
             TaskId = "task-01-01",
-            PlanVersion = plan.Version
-        });
+            PlanVersion = plan.Version,
+            PromptId = "prompt-v1",
+            PromptHash = "hash-MODIFIED-456",
+            GeneratedPrompt = "Modified prompt instructions"
+        };
 
-        // First dispatch -> Consumes approval
-        var result1 = await _service.DispatchTaskAsync(plan, "phase-01", "task-01-01", pkg, _testDir);
-        Assert.True(result1.Success);
-        Assert.Equal(1, _fakeAgent.CallCount);
+        // Attempt dispatch with modified prompt hash -> Rejected
+        var result = await _service.DispatchTaskAsync(plan, "phase-01", "task-01-01", pkgModified, _testDir);
 
-        // Task fails or reset for retry, attempt second dispatch without new approval
-        plan.Phases[0].Tasks[0].Status = TaskPlanStatus.NotStarted;
-        await _store.SavePlanAsync(plan);
-
-        var result2 = await _service.DispatchTaskAsync(plan, "phase-01", "task-01-01", pkg, _testDir);
-        Assert.False(result2.Success);
-        Assert.Equal(CodingAgentErrorCode.HumanApprovalRequired, result2.ErrorCode);
-        Assert.Equal(1, _fakeAgent.CallCount); // Call count remains 1
-    }
-
-    [Fact]
-    public async Task BridgeServer_HumanGateApiTrustBoundary_Tests()
-    {
-        var logService = new LogService();
-        var configService = new ConfigService(logService);
-        var cfg = configService.LoadConfig();
-        cfg.BridgeHost = "127.0.0.1";
-        cfg.BridgePort = 9888;
-        cfg.ApiToken = "test-token-human-gate";
-        configService.SaveConfig(cfg);
-        var taskRegistry = new TaskRegistry();
-        var taskService = new TaskService(logService, taskRegistry);
-        var envService = new AntigravityEnvironmentService(logService);
-        var runner = new AntigravityRunner(logService, envService);
-
-        var planStore = new FileProjectPlanStore(_testDir);
-        var plan = CreateProtectedPlan();
-        await planStore.SavePlanAsync(plan);
-
-        var brainService = new AIBrainService(logService, configService, new AIBrainProviderRegistry());
-        var planningService = new PlanningService(brainService, new PlanValidator(), planStore);
-        var promptService = new ExecutionPromptService(new PromptValidator(), logService: logService);
-        var humanApprovalService = new HumanApprovalService();
-        var codingAgentService = new CodingAgentService(_registry, taskService, planStore, new PromptValidator(), taskRegistry: taskRegistry, humanApprovalService: humanApprovalService, logService: logService);
-
-        var server = new BridgeServer(
-            configService, logService, taskService, taskRegistry, envService, runner,
-            planningService: planningService,
-            executionPromptService: promptService,
-            codingAgentRegistry: _registry,
-            codingAgentService: codingAgentService,
-            humanApprovalService: humanApprovalService);
-
-        bool started = await server.StartAsync();
-        Assert.True(started);
-
-        try
-        {
-            using var client = new HttpClient { BaseAddress = new Uri("http://127.0.0.1:9888") };
-
-            // 1. Unauthenticated approve-execution request -> REJECTED 401
-            var unauthRes = await client.PostAsync("/api/projects/proj-human-07/phases/phase-01/tasks/task-01-01/approve-execution", null);
-            Assert.Equal(HttpStatusCode.Unauthorized, unauthRes.StatusCode);
-
-            // 2. Authenticated ordinary dispatch request without prior approval -> REJECTED 400 HUMAN_APPROVAL_REQUIRED
-            client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", "test-token-human-gate");
-            var dispatchRes = await client.PostAsJsonAsync("/api/projects/proj-human-07/phases/phase-01/tasks/task-01-01/dispatch", new { timeoutSeconds = 600 });
-            Assert.Equal(HttpStatusCode.BadRequest, dispatchRes.StatusCode);
-            var dispatchBody = await dispatchRes.Content.ReadAsStringAsync();
-            Assert.Contains("HUMAN_APPROVAL_REQUIRED", dispatchBody);
-            Assert.Equal(0, _fakeAgent.CallCount);
-
-            // 3. Trusted local human approval endpoint -> ACCEPTED 200 OK
-            var approveRes = await client.PostAsync("/api/projects/proj-human-07/phases/phase-01/tasks/task-01-01/approve-execution", null);
-            Assert.Equal(HttpStatusCode.OK, approveRes.StatusCode);
-
-            // 4. Dispatch after trusted approval -> ACCEPTED 200 OK
-            var dispatchAllowedRes = await client.PostAsJsonAsync("/api/projects/proj-human-07/phases/phase-01/tasks/task-01-01/dispatch", new { timeoutSeconds = 600 });
-            Assert.Equal(HttpStatusCode.OK, dispatchAllowedRes.StatusCode);
-            Assert.Equal(1, _fakeAgent.CallCount);
-        }
-        finally
-        {
-            await server.StopAsync();
-        }
+        Assert.False(result.Success);
+        Assert.Equal(CodingAgentErrorCode.HumanApprovalRequired, result.ErrorCode);
+        Assert.Equal(0, _fakeAgent.CallCount);
     }
 }

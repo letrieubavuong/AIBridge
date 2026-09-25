@@ -17,6 +17,8 @@ public class HumanApprovalService : IHumanApprovalService
         string phaseId,
         string taskId,
         int planVersion,
+        string? promptId = null,
+        string? promptHash = null,
         CancellationToken cancellationToken = default)
     {
         lock (_lock)
@@ -27,6 +29,7 @@ public class HumanApprovalService : IHumanApprovalService
                             && string.Equals(r.PhaseId, phaseId, StringComparison.OrdinalIgnoreCase)
                             && string.Equals(r.TaskId, taskId, StringComparison.OrdinalIgnoreCase)
                             && r.PlanVersion == planVersion)
+                .Where(r => string.IsNullOrEmpty(r.PromptHash) || string.Equals(r.PromptHash, promptHash, StringComparison.OrdinalIgnoreCase))
                 .OrderByDescending(r => r.ApprovedAt)
                 .FirstOrDefault();
 
@@ -62,6 +65,28 @@ public class HumanApprovalService : IHumanApprovalService
         }
 
         return Task.FromResult(record);
+    }
+
+    public Task<HumanApprovalRecord> ApproveAsync(
+        string projectId,
+        string phaseId,
+        string taskId,
+        int planVersion,
+        string? promptId = null,
+        string? promptHash = null,
+        string approvedBy = "LocalHuman",
+        CancellationToken cancellationToken = default)
+    {
+        return ApproveAsync(new HumanApprovalRequest
+        {
+            ProjectId = projectId,
+            PhaseId = phaseId,
+            TaskId = taskId,
+            PlanVersion = planVersion,
+            PromptId = promptId,
+            PromptHash = promptHash,
+            ApprovedBy = approvedBy
+        }, cancellationToken);
     }
 
     public Task RevokeAsync(

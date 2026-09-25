@@ -169,7 +169,9 @@ public class CodingAgentService : ICodingAgentService
 
         if (task.RequiresHumanApproval)
         {
-            var approval = _humanApprovalService?.GetValidApprovalAsync(plan.ProjectId, phase.PhaseId, task.TaskId, plan.Version).GetAwaiter().GetResult();
+            var approval = _humanApprovalService?.GetValidApprovalAsync(
+                plan.ProjectId, phase.PhaseId, task.TaskId, plan.Version,
+                promptPackage?.PromptId, promptPackage?.PromptHash).GetAwaiter().GetResult();
             if (approval == null || !approval.IsValid)
             {
                 errorReason = $"Task '{task.TaskId}' requires explicit human approval before dispatch.";
@@ -262,16 +264,6 @@ public class CodingAgentService : ICodingAgentService
         var phase = plan.Phases.First(p => string.Equals(p.PhaseId, phaseId, StringComparison.OrdinalIgnoreCase));
         var task = phase.Tasks.First(t => string.Equals(t.TaskId, taskId, StringComparison.OrdinalIgnoreCase));
 
-        // Consume human approval upon starting dispatch
-        if (task.RequiresHumanApproval && _humanApprovalService != null)
-        {
-            var approval = await _humanApprovalService.GetValidApprovalAsync(plan.ProjectId, phase.PhaseId, task.TaskId, plan.Version, cancellationToken);
-            if (approval != null)
-            {
-                await _humanApprovalService.ConsumeApprovalAsync(approval.ApprovalId, cancellationToken);
-            }
-        }
-
         if (!_taskService.TryAcquireExecutionSlot())
         {
             return new CodingAgentExecutionResult
@@ -307,6 +299,18 @@ public class CodingAgentService : ICodingAgentService
                 StartedAt = DateTime.Now,
                 CompletedAt = DateTime.Now
             };
+        }
+
+        // Consume human approval now that all preflight checks passed and execution slot is acquired
+        if (task.RequiresHumanApproval && _humanApprovalService != null)
+        {
+            var approval = await _humanApprovalService.GetValidApprovalAsync(
+                plan.ProjectId, phase.PhaseId, task.TaskId, plan.Version,
+                promptPackage.PromptId, promptPackage.PromptHash, cancellationToken);
+            if (approval != null)
+            {
+                await _humanApprovalService.ConsumeApprovalAsync(approval.ApprovalId, cancellationToken);
+            }
         }
 
         var req = new CodingAgentExecutionRequest

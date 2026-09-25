@@ -457,9 +457,11 @@
                                 <Grid.RowDefinitions>
                                     <RowDefinition Height="Auto"/>
                                     <RowDefinition Height="*"/>
+                                    <RowDefinition Height="Auto"/>
                                 </Grid.RowDefinitions>
                                 <TextBlock Grid.Row="0" Text="PLAN ITEM DETAILS" FontWeight="Bold" Foreground="{StaticResource SubTextBrush}" FontSize="11" Margin="0,0,0,6"/>
                                 <TextBox Grid.Row="1" Text="{Binding SelectedNodeDetailsText}" IsReadOnly="True" AcceptsReturn="True" TextWrapping="Wrap" Background="Transparent" Foreground="{StaticResource TextBrush}" BorderThickness="0" FontFamily="Consolas" FontSize="11"/>
+                                <Button Grid.Row="2" Content="APPROVE EXECUTION (HUMAN GATE)" Command="{Binding ApproveExecutionCommand}" Background="{StaticResource AccentBrush}" Foreground="#1E1E2E" FontWeight="Bold" Padding="10,6" Margin="0,6,0,0"/>
                             </Grid>
                         </Border>
                     </Grid>
