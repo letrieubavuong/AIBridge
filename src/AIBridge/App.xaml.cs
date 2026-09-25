@@ -9,9 +9,10 @@ namespace AIBridge;
 public partial class App : Application
 {
     private IBridgeServer? _bridgeServer;
+    private IMcpServer? _mcpServer;
     private ITaskService? _taskService;
 
-    private void Application_Startup(object sender, StartupEventArgs e)
+    private async void Application_Startup(object sender, StartupEventArgs e)
     {
         ILogService logService = new LogService();
         IConfigService configService = new ConfigService(logService);
@@ -34,6 +35,31 @@ public partial class App : Application
         brainProviderRegistry.RegisterProvider(new MockBrainProvider());
 
         IAIBrainService brainService = new AIBrainService(logService, configService, brainProviderRegistry);
+        var planStore = new FileProjectPlanStore();
+        var planValidator = new PlanValidator();
+        IPlanningService planningService = new PlanningService(brainService, planValidator, planStore);
+        IPromptValidator promptValidator = new PromptValidator();
+        IExecutionPromptService executionPromptService = new ExecutionPromptService(promptValidator, gitEvidenceService, configService, logService);
+        IHumanApprovalService humanApprovalService = new HumanApprovalService();
+        ICodingAgentRegistry codingAgentRegistry = new CodingAgentRegistry();
+        codingAgentRegistry.RegisterAgent(new AntigravityCodingAgent(_taskService, antigravityRunner, environmentService));
+        ICodingAgentService codingAgentService = new CodingAgentService(codingAgentRegistry, _taskService, planStore, promptValidator, gitEvidenceService, taskRegistry, humanApprovalService, logService);
+
+        _mcpServer = new McpServer(
+            configService,
+            logService,
+            _taskService,
+            planningService,
+            executionPromptService,
+            codingAgentService,
+            humanApprovalService,
+            taskRegistry
+        );
+
+        if (config.McpEnabled)
+        {
+            await _mcpServer.StartAsync();
+        }
 
         _bridgeServer = new BridgeServer(
             configService,
@@ -61,7 +87,13 @@ public partial class App : Application
             gitEvidenceService,
             taskRegistry,
             brainService,
-            brainProviderRegistry
+            brainProviderRegistry,
+            planningService,
+            executionPromptService,
+            codingAgentRegistry,
+            codingAgentService,
+            humanApprovalService,
+            _mcpServer
         );
 
         var mainWindow = new MainWindow
@@ -82,6 +114,11 @@ public partial class App : Application
                 await _bridgeServer.StopAsync();
             }
 
+            if (_mcpServer != null)
+            {
+                await _mcpServer.StopAsync();
+            }
+
             // 2. If a task is running, request cancellation
             if (_taskService != null && _taskService.CurrentTask?.Status == AgentTaskStatus.Running)
             {
@@ -94,6 +131,12 @@ public partial class App : Application
             // 4. Dispose server and resources
             _bridgeServer?.Dispose();
             _bridgeServer = null;
+
+            if (_mcpServer is IDisposable disp)
+            {
+                disp.Dispose();
+            }
+            _mcpServer = null;
         }
         catch
         {

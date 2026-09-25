@@ -56,45 +56,51 @@ Phase 07 implements the execution-preparation and coding-agent dispatch layer. C
 ## Architecture
 
 ```text
-USER
-  │
-  ▼
-CHATGPT WEB
-= DEFAULT AI BRAIN
-  │
-  │ Plugin / MCP tools
-  ▼
-AIBridge Desktop
-= LOCAL EXECUTION / STATE / EVIDENCE BRIDGE
-  │
-  ├── IHumanApprovalService (Trusted Human Gate state)
-  │
-  ▼
-Coding Agent
-  │
-  └── Antigravity now
-  └── other agents in future
-  │
-  ▼
-Workspace
-  │
-  ▼
-Git / GitHub
-  │
-  ▼
-Evidence (Correlated via ExecutionId / AgentTaskId)
-  │
-  └──────────────────────► ChatGPT Web
+ChatGPT Web
+     │
+     │ MCP
+     ▼
+AIBridge MCP Server
+     │
+     ▼
+ExecutionPromptService
+     │
+     ▼
+CodingAgentService
+     │
+     ▼
+AntigravityCodingAgent
+     │
+     ▼
+TaskService
+     │
+     ▼
+AntigravityRunner
+     │
+     ▼
+agy
+     │
+     ▼
+Workspace / Git
+     │
+     ▼
+GitEvidence
+     │
+     ▼
+ExecutionReviewPackage
+     │
+     └──────── MCP ────────→ ChatGPT Web
 ```
 
 ### Critical Architecture Principles
 
-* **Default AI Brain**: ChatGPT Web is the primary reasoning/orchestration brain. AIBridge is the local execution, state, and evidence bridge.
+* **Default AI Brain**: ChatGPT Web is the primary reasoning/orchestration brain. AIBridge is the deterministic local execution, state, and evidence bridge.
+* **Coding Agent**: Antigravity CLI is the current coding executor agent (`AntigravityCodingAgent`). Future coding agents remain fully pluggable via `ICodingAgent`.
 * **No Model API Key Required**: Default workflow requires zero OpenAI/Claude/Gemini API keys.
-* **IAIBrain Extension Architecture Preserved**: Phase 05 `IAIBrain` interface and providers remain fully intact as an optional extension point for future API integrations.
-* **No Web Scraping or Session Hacks**: AIBridge does not log in to ChatGPT or scrape web sessions. Integrations use standard tool protocols.
+* **No Web Scraping or Session Hacks**: AIBridge does not scrape ChatGPT web sessions or manipulate browser cookies. Integrations use standard MCP (Model Context Protocol) tool streams over HTTP.
+* **Trusted Local Human Gate**: Human approval is a trusted local WPF action. MCP tool surface cannot grant or manufacture human approvals.
 * **AGENT SUCCESS != TASK PASS**: When an agent completes with ExitCode = 0, AIBridge marks the task as `Reviewing`. The task becomes `Passed` only after external Brain review of the `ExecutionReviewPackage` and Git evidence.
-* **Security & Workspace Isolation**: External commands specify ProjectId/PhaseId/TaskId and instructions. Workspace paths are resolved from trusted local AIBridge configuration; no arbitrary shell execution endpoints are exposed.
+* **Security & Workspace Isolation**: External commands specify ProjectId/PhaseId/TaskId and instructions. Workspace paths are resolved from trusted local AIBridge project configuration; no arbitrary shell execution endpoints or file system tools are exposed via MCP.
 
 ---
 

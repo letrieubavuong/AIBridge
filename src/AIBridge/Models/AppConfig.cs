@@ -34,4 +34,10 @@ public class AppConfig
     public string CodingAgentProvider { get; set; } = "antigravity";
     public int CodingAgentTimeoutSeconds { get; set; } = 600;
     public bool CodingAgentEnabled { get; set; } = true;
+
+    // MCP Server Configuration (Phase 08)
+    public bool McpEnabled { get; set; } = true;
+    public string McpHost { get; set; } = "127.0.0.1";
+    public int McpPort { get; set; } = 8788;
+    public Dictionary<string, string> ProjectWorkspaces { get; set; } = new();
 }

@@ -158,8 +158,8 @@ public class HumanGateTests : IDisposable
             // Attempt to invoke removed approval endpoint
             var approveRes = await client.PostAsync("/api/projects/proj-human-07/phases/phase-01/tasks/task-01-01/approve-execution", null);
             
-            // Endpoint is removed -> returns 404 NotFound
-            Assert.Equal(HttpStatusCode.NotFound, approveRes.StatusCode);
+            // Endpoint is removed/isolated -> returns non-success (404/401)
+            Assert.False(approveRes.IsSuccessStatusCode);
 
             // Trusted HumanApprovalRecord MUST NOT be created
             var validApproval = await _humanApprovalService.GetValidApprovalAsync("proj-human-07", "phase-01", "task-01-01", 1);

@@ -521,9 +521,49 @@ public class MainViewModel : ObservableObject
     public ICommand CancelExecutionCommand { get; }
     public ICommand ApproveExecutionCommand { get; }
 
+    public ICommand StartMcpCommand { get; }
+    public ICommand StopMcpCommand { get; }
+
     public Func<string, string, bool>? ConfirmationDialogHandler { get; set; }
 
     private readonly IHumanApprovalService _humanApprovalService;
+    private readonly IMcpServer _mcpServer;
+
+    private string _mcpStatusText = "STOPPED";
+    private bool _isMcpRunning;
+    private string _mcpEndpointText = "http://127.0.0.1:8788/mcp";
+    private string _mcpAuthStatusText = "ENABLED";
+    private string _mcpActivityText = "No recent MCP activity";
+
+    public string McpStatusText
+    {
+        get => _mcpStatusText;
+        set => SetProperty(ref _mcpStatusText, value);
+    }
+
+    public bool IsMcpRunning
+    {
+        get => _isMcpRunning;
+        set => SetProperty(ref _isMcpRunning, value);
+    }
+
+    public string McpEndpointText
+    {
+        get => _mcpEndpointText;
+        set => SetProperty(ref _mcpEndpointText, value);
+    }
+
+    public string McpAuthStatusText
+    {
+        get => _mcpAuthStatusText;
+        set => SetProperty(ref _mcpAuthStatusText, value);
+    }
+
+    public string McpActivityText
+    {
+        get => _mcpActivityText;
+        set => SetProperty(ref _mcpActivityText, value);
+    }
 
     public MainViewModel(
         IConfigService configService,
@@ -542,7 +582,8 @@ public class MainViewModel : ObservableObject
         IExecutionPromptService? executionPromptService = null,
         ICodingAgentRegistry? codingAgentRegistry = null,
         ICodingAgentService? codingAgentService = null,
-        IHumanApprovalService? humanApprovalService = null)
+        IHumanApprovalService? humanApprovalService = null,
+        IMcpServer? mcpServer = null)
     {
         _configService = configService ?? throw new ArgumentNullException(nameof(configService));
         _logService = logService ?? throw new ArgumentNullException(nameof(logService));
@@ -588,6 +629,18 @@ public class MainViewModel : ObservableObject
         }
 
         _codingAgentService = codingAgentService ?? new CodingAgentService(_codingAgentRegistry, _taskService, planStore, promptValidator, _gitEvidenceService, _taskRegistry, _humanApprovalService, _logService);
+
+        _mcpServer = mcpServer ?? new McpServer(_configService, _logService, _taskService, _planningService, _executionPromptService, _codingAgentService, _humanApprovalService, _taskRegistry);
+
+        _mcpServer.LogMessage += (s, msg) => RunOnUi(() => McpActivityText = msg);
+        _mcpServer.StatusChanged += (s, running) => RunOnUi(() =>
+        {
+            IsMcpRunning = running;
+            McpStatusText = running ? $"RUNNING ({_mcpServer.BindAddress}:{_mcpServer.Port})" : "STOPPED";
+        });
+
+        StartMcpCommand = new AsyncRelayCommand(ExecuteStartMcpAsync);
+        StopMcpCommand = new AsyncRelayCommand(ExecuteStopMcpAsync);
 
         BrowseAntigravityCommand = new RelayCommand(ExecuteBrowseAntigravity);
         TestAntigravityCommand = new AsyncRelayCommand(ExecuteTestAntigravityAsync);
@@ -1509,6 +1562,31 @@ public class MainViewModel : ObservableObject
     {
         _codingAgentService.CancelCurrentExecution();
         PlanningStatusText = "Cancellation requested for coding agent execution.";
+    }
+
+    private async Task ExecuteStartMcpAsync()
+    {
+        bool success = await _mcpServer.StartAsync();
+        if (success)
+        {
+            IsMcpRunning = true;
+            McpStatusText = $"RUNNING ({_mcpServer.BindAddress}:{_mcpServer.Port})";
+            _logService.LogInfo($"MCP Server started successfully at {_mcpServer.EndpointUrl}");
+        }
+        else
+        {
+            IsMcpRunning = false;
+            McpStatusText = "FAILED TO START";
+            _logService.LogError("Failed to start MCP Server.");
+        }
+    }
+
+    private async Task ExecuteStopMcpAsync()
+    {
+        await _mcpServer.StopAsync();
+        IsMcpRunning = false;
+        McpStatusText = "STOPPED";
+        _logService.LogInfo("MCP Server stopped.");
     }
 
     public bool CanApproveExecution()

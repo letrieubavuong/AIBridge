@@ -85,117 +85,164 @@
             </Grid>
         </Border>
 
-        <!-- 1. Local Bridge Server Panel -->
-        <Border Grid.Row="1" Background="{StaticResource CardBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="6" Padding="14,10" Margin="0,0,0,8">
-            <Grid>
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="Auto" />
-                    <ColumnDefinition Width="*" />
-                    <ColumnDefinition Width="Auto" />
-                </Grid.ColumnDefinitions>
+        <!-- 1. Server, Git & MCP Panels -->
+        <StackPanel Grid.Row="1" Margin="0,0,0,8">
+            <!-- 1a. Local Bridge Server Panel -->
+            <Border Background="{StaticResource CardBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="6" Padding="14,6" Margin="0,0,0,4">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
 
-                <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
-                    <TextBlock Text="LOCAL BRIDGE" FontWeight="Bold" Foreground="{StaticResource PrimaryBrush}" FontSize="13" VerticalAlignment="Center" Margin="0,0,12,0"/>
-                    <Border Background="#1E1E2E" Padding="8,3" CornerRadius="4" Margin="0,0,8,0">
-                        <StackPanel Orientation="Horizontal">
-                            <TextBlock Text="Status: " Foreground="{StaticResource SubTextBrush}" FontSize="12"/>
-                            <TextBlock Text="{Binding BridgeStatusText}" Foreground="{StaticResource AccentBrush}" FontWeight="Bold" FontSize="12"/>
-                        </StackPanel>
-                    </Border>
-                    <Border Background="#1E1E2E" Padding="8,3" CornerRadius="4" Margin="0,0,8,0">
-                        <StackPanel Orientation="Horizontal">
-                            <TextBlock Text="Address: " Foreground="{StaticResource SubTextBrush}" FontSize="12"/>
-                            <TextBlock Text="{Binding BridgeHostPortText}" Foreground="{StaticResource TextBrush}" FontWeight="SemiBold" FontSize="12"/>
-                        </StackPanel>
-                    </Border>
-                    <Border Background="#1E1E2E" Padding="8,3" CornerRadius="4" Margin="0,0,8,0">
-                        <StackPanel Orientation="Horizontal">
-                            <TextBlock Text="Token: " Foreground="{StaticResource SubTextBrush}" FontSize="12"/>
-                            <TextBlock Text="{Binding DisplayedApiTokenText}" Foreground="{StaticResource TextBrush}" FontFamily="Consolas" FontSize="11" VerticalAlignment="Center"/>
-                        </StackPanel>
-                    </Border>
-                </StackPanel>
+                    <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
+                        <TextBlock Text="LOCAL BRIDGE" FontWeight="Bold" Foreground="{StaticResource PrimaryBrush}" FontSize="12" VerticalAlignment="Center" Margin="0,0,12,0"/>
+                        <Border Background="#1E1E2E" Padding="6,2" CornerRadius="4" Margin="0,0,6,0">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="Status: " Foreground="{StaticResource SubTextBrush}" FontSize="11"/>
+                                <TextBlock Text="{Binding BridgeStatusText}" Foreground="{StaticResource AccentBrush}" FontWeight="Bold" FontSize="11"/>
+                            </StackPanel>
+                        </Border>
+                        <Border Background="#1E1E2E" Padding="6,2" CornerRadius="4" Margin="0,0,6,0">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="Address: " Foreground="{StaticResource SubTextBrush}" FontSize="11"/>
+                                <TextBlock Text="{Binding BridgeHostPortText}" Foreground="{StaticResource TextBrush}" FontWeight="SemiBold" FontSize="11"/>
+                            </StackPanel>
+                        </Border>
+                        <Border Background="#1E1E2E" Padding="6,2" CornerRadius="4" Margin="0,0,6,0">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="Token: " Foreground="{StaticResource SubTextBrush}" FontSize="11"/>
+                                <TextBlock Text="{Binding DisplayedApiTokenText}" Foreground="{StaticResource TextBrush}" FontFamily="Consolas" FontSize="11" VerticalAlignment="Center"/>
+                            </StackPanel>
+                        </Border>
+                    </StackPanel>
 
-                <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
-                    <Button Content="Show/Hide" Command="{Binding ToggleTokenMaskCommand}" Padding="8,3" Margin="0,0,6,0" FontSize="11"/>
-                    <Button Content="Copy Token" Command="{Binding CopyTokenCommand}" Padding="8,3" Margin="0,0,6,0" FontSize="11"/>
-                    <Button Content="Regenerate" Command="{Binding RegenerateTokenCommand}" Padding="8,3" Margin="0,0,12,0" FontSize="11"/>
-                    
-                    <Button Content="START" Command="{Binding StartBridgeCommand}" Visibility="{Binding IsBridgeStopped, Converter={StaticResource BoolToVis}}" Background="{StaticResource AccentBrush}" Foreground="#1E1E2E" FontWeight="Bold" Padding="12,3" Margin="0,0,4,0"/>
-                    <Button Content="STOP" Command="{Binding StopBridgeCommand}" Visibility="{Binding IsBridgeRunning, Converter={StaticResource BoolToVis}}" Background="#FF5555" Foreground="White" FontWeight="Bold" Padding="12,3"/>
-                </StackPanel>
-            </Grid>
-        </Border>
+                    <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
+                        <Button Content="Show/Hide" Command="{Binding ToggleTokenMaskCommand}" Padding="6,2" Margin="0,0,4,0" FontSize="11"/>
+                        <Button Content="Copy Token" Command="{Binding CopyTokenCommand}" Padding="6,2" Margin="0,0,4,0" FontSize="11"/>
+                        <Button Content="Regenerate" Command="{Binding RegenerateTokenCommand}" Padding="6,2" Margin="0,0,8,0" FontSize="11"/>
+                        
+                        <Button Content="START" Command="{Binding StartBridgeCommand}" Visibility="{Binding IsBridgeStopped, Converter={StaticResource BoolToVis}}" Background="{StaticResource AccentBrush}" Foreground="#1E1E2E" FontWeight="Bold" Padding="10,2" Margin="0,0,4,0"/>
+                        <Button Content="STOP" Command="{Binding StopBridgeCommand}" Visibility="{Binding IsBridgeRunning, Converter={StaticResource BoolToVis}}" Background="#FF5555" Foreground="White" FontWeight="Bold" Padding="10,2"/>
+                    </StackPanel>
+                </Grid>
+            </Border>
 
-        <!-- 1b. Git / GitHub Evidence Layer Panel (Phase 04) -->
-        <Border Grid.Row="1" Background="{StaticResource CardBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="6" Padding="14,8" Margin="0,52,0,8">
-            <Grid>
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="Auto" />
-                    <ColumnDefinition Width="*" />
-                    <ColumnDefinition Width="Auto" />
-                </Grid.ColumnDefinitions>
+            <!-- 1b. Git / GitHub Evidence Layer Panel (Phase 04) -->
+            <Border Background="{StaticResource CardBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="6" Padding="14,6" Margin="0,0,0,4">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
 
-                <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
-                    <TextBlock Text="GIT / GITHUB" FontWeight="Bold" Foreground="{StaticResource PrimaryBrush}" FontSize="13" VerticalAlignment="Center" Margin="0,0,12,0"/>
-                    
-                    <Border Background="#1E1E2E" Padding="6,2" CornerRadius="4" Margin="0,0,6,0">
-                        <StackPanel Orientation="Horizontal">
-                            <TextBlock Text="Git: " Foreground="{StaticResource SubTextBrush}" FontSize="11"/>
-                            <TextBlock Text="{Binding GitStatusText}" Foreground="{StaticResource AccentBrush}" FontWeight="Bold" FontSize="11"/>
-                        </StackPanel>
-                    </Border>
-                    
-                    <Border Background="#1E1E2E" Padding="6,2" CornerRadius="4" Margin="0,0,6,0">
-                        <StackPanel Orientation="Horizontal">
-                            <TextBlock Text="Ver: " Foreground="{StaticResource SubTextBrush}" FontSize="11"/>
-                            <TextBlock Text="{Binding GitVersionText}" Foreground="{StaticResource TextBrush}" FontSize="11"/>
-                        </StackPanel>
-                    </Border>
+                    <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
+                        <TextBlock Text="GIT / GITHUB" FontWeight="Bold" Foreground="{StaticResource PrimaryBrush}" FontSize="12" VerticalAlignment="Center" Margin="0,0,12,0"/>
+                        
+                        <Border Background="#1E1E2E" Padding="6,2" CornerRadius="4" Margin="0,0,6,0">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="Git: " Foreground="{StaticResource SubTextBrush}" FontSize="11"/>
+                                <TextBlock Text="{Binding GitStatusText}" Foreground="{StaticResource AccentBrush}" FontWeight="Bold" FontSize="11"/>
+                            </StackPanel>
+                        </Border>
+                        
+                        <Border Background="#1E1E2E" Padding="6,2" CornerRadius="4" Margin="0,0,6,0">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="Ver: " Foreground="{StaticResource SubTextBrush}" FontSize="11"/>
+                                <TextBlock Text="{Binding GitVersionText}" Foreground="{StaticResource TextBrush}" FontSize="11"/>
+                            </StackPanel>
+                        </Border>
 
-                    <Border Background="#1E1E2E" Padding="6,2" CornerRadius="4" Margin="0,0,6,0">
-                        <StackPanel Orientation="Horizontal">
-                            <TextBlock Text="Repo: " Foreground="{StaticResource SubTextBrush}" FontSize="11"/>
-                            <TextBlock Text="{Binding GitRepoText}" Foreground="{StaticResource TextBrush}" FontWeight="SemiBold" FontSize="11"/>
-                        </StackPanel>
-                    </Border>
+                        <Border Background="#1E1E2E" Padding="6,2" CornerRadius="4" Margin="0,0,6,0">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="Repo: " Foreground="{StaticResource SubTextBrush}" FontSize="11"/>
+                                <TextBlock Text="{Binding GitRepoText}" Foreground="{StaticResource TextBrush}" FontWeight="SemiBold" FontSize="11"/>
+                            </StackPanel>
+                        </Border>
 
-                    <Border Background="#1E1E2E" Padding="6,2" CornerRadius="4" Margin="0,0,6,0">
-                        <StackPanel Orientation="Horizontal">
-                            <TextBlock Text="Branch: " Foreground="{StaticResource SubTextBrush}" FontSize="11"/>
-                            <TextBlock Text="{Binding GitBranchText}" Foreground="{StaticResource TextBrush}" FontWeight="SemiBold" FontSize="11"/>
-                        </StackPanel>
-                    </Border>
+                        <Border Background="#1E1E2E" Padding="6,2" CornerRadius="4" Margin="0,0,6,0">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="Branch: " Foreground="{StaticResource SubTextBrush}" FontSize="11"/>
+                                <TextBlock Text="{Binding GitBranchText}" Foreground="{StaticResource TextBrush}" FontWeight="SemiBold" FontSize="11"/>
+                            </StackPanel>
+                        </Border>
 
-                    <Border Background="#1E1E2E" Padding="6,2" CornerRadius="4" Margin="0,0,6,0">
-                        <StackPanel Orientation="Horizontal">
-                            <TextBlock Text="HEAD: " Foreground="{StaticResource SubTextBrush}" FontSize="11"/>
-                            <TextBlock Text="{Binding GitHeadText}" Foreground="{StaticResource TextBrush}" FontFamily="Consolas" FontSize="11"/>
-                        </StackPanel>
-                    </Border>
+                        <Border Background="#1E1E2E" Padding="6,2" CornerRadius="4" Margin="0,0,6,0">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="HEAD: " Foreground="{StaticResource SubTextBrush}" FontSize="11"/>
+                                <TextBlock Text="{Binding GitHeadText}" Foreground="{StaticResource TextBrush}" FontFamily="Consolas" FontSize="11"/>
+                            </StackPanel>
+                        </Border>
 
-                    <Border Background="#1E1E2E" Padding="6,2" CornerRadius="4" Margin="0,0,6,0">
-                        <StackPanel Orientation="Horizontal">
-                            <TextBlock Text="Tree: " Foreground="{StaticResource SubTextBrush}" FontSize="11"/>
-                            <TextBlock Text="{Binding GitWorkingTreeText}" Foreground="{StaticResource TextBrush}" FontWeight="SemiBold" FontSize="11"/>
-                        </StackPanel>
-                    </Border>
+                        <Border Background="#1E1E2E" Padding="6,2" CornerRadius="4" Margin="0,0,6,0">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="Tree: " Foreground="{StaticResource SubTextBrush}" FontSize="11"/>
+                                <TextBlock Text="{Binding GitWorkingTreeText}" Foreground="{StaticResource TextBrush}" FontWeight="SemiBold" FontSize="11"/>
+                            </StackPanel>
+                        </Border>
 
-                    <Border Background="#1E1E2E" Padding="6,2" CornerRadius="4" Margin="0,0,6,0">
-                        <StackPanel Orientation="Horizontal">
-                            <TextBlock Text="Push: " Foreground="{StaticResource SubTextBrush}" FontSize="11"/>
-                            <TextBlock Text="{Binding GitPushStateText}" Foreground="{StaticResource AccentBrush}" FontWeight="SemiBold" FontSize="11"/>
-                        </StackPanel>
-                    </Border>
-                </StackPanel>
+                        <Border Background="#1E1E2E" Padding="6,2" CornerRadius="4" Margin="0,0,6,0">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="Push: " Foreground="{StaticResource SubTextBrush}" FontSize="11"/>
+                                <TextBlock Text="{Binding GitPushStateText}" Foreground="{StaticResource AccentBrush}" FontWeight="SemiBold" FontSize="11"/>
+                            </StackPanel>
+                        </Border>
+                    </StackPanel>
 
-                <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
-                    <Button Content="REFRESH" Command="{Binding RefreshGitCommand}" Padding="8,2" Margin="0,0,6,0" FontSize="11"/>
-                    <Button Content="VIEW EVIDENCE" Command="{Binding ViewEvidenceCommand}" IsEnabled="{Binding HasEvidenceAvailable}" Padding="8,2" Margin="0,0,6,0" FontSize="11"/>
-                    <Button Content="PUSH" Command="{Binding PushGitCommand}" Background="{StaticResource PrimaryBrush}" Foreground="#1E1E2E" FontWeight="Bold" Padding="10,2" FontSize="11"/>
-                </StackPanel>
-            </Grid>
-        </Border>
+                    <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
+                        <Button Content="REFRESH" Command="{Binding RefreshGitCommand}" Padding="8,2" Margin="0,0,6,0" FontSize="11"/>
+                        <Button Content="VIEW EVIDENCE" Command="{Binding ViewEvidenceCommand}" IsEnabled="{Binding HasEvidenceAvailable}" Padding="8,2" Margin="0,0,6,0" FontSize="11"/>
+                        <Button Content="PUSH" Command="{Binding PushGitCommand}" Background="{StaticResource PrimaryBrush}" Foreground="#1E1E2E" FontWeight="Bold" Padding="10,2" FontSize="11"/>
+                    </StackPanel>
+                </Grid>
+            </Border>
+
+            <!-- 1c. MCP Server Panel (Phase 08) -->
+            <Border Background="{StaticResource CardBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="6" Padding="14,6" Margin="0,0,0,4">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+
+                    <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
+                        <TextBlock Text="MCP SERVER" FontWeight="Bold" Foreground="{StaticResource PrimaryBrush}" FontSize="12" VerticalAlignment="Center" Margin="0,0,12,0"/>
+                        <Border Background="#1E1E2E" Padding="6,2" CornerRadius="4" Margin="0,0,6,0">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="Status: " Foreground="{StaticResource SubTextBrush}" FontSize="11"/>
+                                <TextBlock Text="{Binding McpStatusText}" Foreground="{StaticResource AccentBrush}" FontWeight="Bold" FontSize="11"/>
+                            </StackPanel>
+                        </Border>
+                        <Border Background="#1E1E2E" Padding="6,2" CornerRadius="4" Margin="0,0,6,0">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="Endpoint: " Foreground="{StaticResource SubTextBrush}" FontSize="11"/>
+                                <TextBlock Text="{Binding McpEndpointText}" Foreground="{StaticResource TextBrush}" FontWeight="SemiBold" FontSize="11"/>
+                            </StackPanel>
+                        </Border>
+                        <Border Background="#1E1E2E" Padding="6,2" CornerRadius="4" Margin="0,0,6,0">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="Auth: " Foreground="{StaticResource SubTextBrush}" FontSize="11"/>
+                                <TextBlock Text="{Binding McpAuthStatusText}" Foreground="{StaticResource TextBrush}" FontWeight="SemiBold" FontSize="11"/>
+                            </StackPanel>
+                        </Border>
+                        <Border Background="#1E1E2E" Padding="6,2" CornerRadius="4" Margin="0,0,6,0">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="Activity: " Foreground="{StaticResource SubTextBrush}" FontSize="11"/>
+                                <TextBlock Text="{Binding McpActivityText}" Foreground="{StaticResource SubTextBrush}" FontSize="11"/>
+                            </StackPanel>
+                        </Border>
+                    </StackPanel>
+
+                    <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
+                        <Button Content="START MCP" Command="{Binding StartMcpCommand}" Background="{StaticResource AccentBrush}" Foreground="#1E1E2E" FontWeight="Bold" Padding="10,2" Margin="0,0,4,0"/>
+                        <Button Content="STOP MCP" Command="{Binding StopMcpCommand}" Background="#FF5555" Foreground="White" FontWeight="Bold" Padding="10,2"/>
+                    </StackPanel>
+                </Grid>
+            </Border>
+        </StackPanel>
 
         <!-- 2. AI Brain & Progress Panel (Phase 05) -->
         <Grid Grid.Row="2" Margin="0,0,0,8">
