@@ -971,55 +971,61 @@ public class MainViewModel : ObservableObject
 
     private void InitializeViewModel()
     {
-        _logService.LogInfo("Initializing AIBridge Desktop Application...");
-        _config = _configService.LoadConfig();
-
-        _antigravityPath = _config.AntigravityPath;
-        _workspacePath = _config.WorkspacePath;
-        UpdateWorkspaceStatus(_workspacePath);
-        OnPropertyChanged(nameof(AntigravityPath));
-        OnPropertyChanged(nameof(WorkspacePath));
-        OnPropertyChanged(nameof(ApiTokenText));
-        OnPropertyChanged(nameof(DisplayedApiTokenText));
-        OnPropertyChanged(nameof(BridgeHostPortText));
-
-        _logService.LogInfo("AIBridge Initialization Complete.");
-
-        _ = RefreshEnvironmentAsync();
-
-        if (!string.IsNullOrWhiteSpace(_workspacePath))
+        try
         {
-            _ = ExecuteValidateWorkspaceAsync();
-        }
+            _logService.LogInfo("Initializing AIBridge Desktop Application...");
+            _config = _configService.LoadConfig();
 
-        // Auto-start Local Bridge if enabled
-        if (_config.BridgeEnabled)
+            _antigravityPath = _config.AntigravityPath;
+            _workspacePath = _config.WorkspacePath;
+            UpdateWorkspaceStatus(_workspacePath);
+            OnPropertyChanged(nameof(AntigravityPath));
+            OnPropertyChanged(nameof(WorkspacePath));
+            OnPropertyChanged(nameof(ApiTokenText));
+            OnPropertyChanged(nameof(DisplayedApiTokenText));
+            OnPropertyChanged(nameof(BridgeHostPortText));
+
+            _logService.LogInfo("AIBridge Initialization Complete.");
+
+            _ = RefreshEnvironmentAsync();
+
+            if (!string.IsNullOrWhiteSpace(_workspacePath))
+            {
+                _ = ExecuteValidateWorkspaceAsync();
+            }
+
+            // Auto-start Local Bridge if enabled
+            if (_config.BridgeEnabled)
+            {
+                _logService.LogInfo("Auto-starting Local Bridge Server...");
+                _ = ExecuteStartBridgeAsync();
+            }
+
+            // Initialize Brain & Progress UI
+            BrainProviders.Clear();
+            var descriptors = _brainProviderRegistry.GetAvailableProviders();
+            foreach (var desc in descriptors)
+            {
+                BrainProviders.Add(desc);
+            }
+
+            var activeId = _config.BrainProvider;
+            SelectedBrainProvider = BrainProviders.FirstOrDefault(p => p.Id.Equals(activeId, StringComparison.OrdinalIgnoreCase))
+                                   ?? BrainProviders.FirstOrDefault();
+
+            BrainModelText = _config.BrainModel;
+            BrainStatusText = _brainService.GetCurrentState().ToString().ToUpper();
+            AutomationModeText = _config.AutomationMode.ToString();
+
+            ProjectPercent = 33.3;
+            PhasePercent = 30.0;
+            ProjectProgressText = "Phase 05 / 12 AI Brain Foundation";
+            PhaseProgressText = "3 / 10 tasks completed | Current: Brain Provider Registry | Status: RUNNING";
+        }
+        catch (Exception ex)
         {
-            _logService.LogInfo("Auto-starting Local Bridge Server...");
-            _ = ExecuteStartBridgeAsync();
+            _logService.LogError("Error in InitializeViewModel", ex);
         }
-
-        // Initialize Brain & Progress UI
-        BrainProviders.Clear();
-        var descriptors = _brainProviderRegistry.GetAvailableProviders();
-        foreach (var desc in descriptors)
-        {
-            BrainProviders.Add(desc);
-        }
-
-        var activeId = _config.BrainProvider;
-        SelectedBrainProvider = BrainProviders.FirstOrDefault(p => p.Id.Equals(activeId, StringComparison.OrdinalIgnoreCase))
-                               ?? BrainProviders.FirstOrDefault();
-
-        BrainModelText = _config.BrainModel;
-        BrainStatusText = _brainService.GetCurrentState().ToString().ToUpper();
-        AutomationModeText = _config.AutomationMode.ToString();
-
-        // Project progress: 4/12 phases completed (33.3%), Phase 05 = 3/10 tasks (30.0%)
-        ProjectPercent = 33.3;
-        PhasePercent = 30.0;
-        ProjectProgressText = "Phase 05 / 12 AI Brain Foundation";
-        PhaseProgressText = "3 / 10 tasks completed | Current: Brain Provider Registry | Status: RUNNING";
     }
 
     private async Task ExecuteTestBrainAsync()

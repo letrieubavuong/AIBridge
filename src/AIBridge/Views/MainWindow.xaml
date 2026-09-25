@@ -5,12 +5,28 @@
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:viewmodels="clr-namespace:AIBridge.ViewModels"
         xmlns:models="clr-namespace:AIBridge.Models"
+        xmlns:infra="clr-namespace:AIBridge.Infrastructure"
         mc:Ignorable="d"
         Title="AIBridge — Trợ lý điều phối phát triển phần mềm" 
         Height="800" Width="1200"
         MinHeight="600" MinWidth="900"
         WindowStartupLocation="CenterScreen"
-        Background="{StaticResource BgBrush}">
+        Background="{DynamicResource BgBrush}">
+
+    <Window.Resources>
+        <BooleanToVisibilityConverter x:Key="BoolToVis" />
+        <infra:InverseBooleanConverter x:Key="InverseBool" />
+
+        <SolidColorBrush x:Key="BgBrush" Color="#1E1E2E" />
+        <SolidColorBrush x:Key="CardBrush" Color="#282A36" />
+        <SolidColorBrush x:Key="BorderBrush" Color="#44475A" />
+        <SolidColorBrush x:Key="TextBrush" Color="#F8F8F2" />
+        <SolidColorBrush x:Key="SubTextBrush" Color="#6272A4" />
+        <SolidColorBrush x:Key="PrimaryBrush" Color="#BD93F9" />
+        <SolidColorBrush x:Key="AccentBrush" Color="#50FA7B" />
+        <SolidColorBrush x:Key="WarningBrush" Color="#FFB86C" />
+        <SolidColorBrush x:Key="ErrorBrush" Color="#FF5555" />
+    </Window.Resources>
 
     <Grid>
         <Grid.ColumnDefinitions>
@@ -321,7 +337,7 @@
                         <Border Background="{StaticResource CardBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="8" Padding="20,16" Margin="0,0,0,16">
                             <StackPanel>
                                 <TextBlock Text="NỘI DUNG GỬI ANTIGRAVITY" FontSize="13" FontWeight="Bold" Foreground="{StaticResource PrimaryBrush}" Margin="0,0,0,8" />
-                                <TextBox Text="{Binding PromptPreviewText}" IsReadOnly="True" AcceptsReturn="True" TextWrapping="Wrap" MinHeight="100" MaxHeight="180" FontFamily="Consolas" FontSize="12" />
+                                <TextBox Text="{Binding PromptPreviewText, Mode=OneWay}" IsReadOnly="True" AcceptsReturn="True" TextWrapping="Wrap" MinHeight="100" MaxHeight="180" FontFamily="Consolas" FontSize="12" />
                             </StackPanel>
                         </Border>
 
@@ -412,7 +428,7 @@
                                         <ColumnDefinition Width="*" />
                                     </Grid.ColumnDefinitions>
                                     <TextBlock Grid.Column="0" Text="Địa chỉ MCP Endpoint:" Foreground="{StaticResource SubTextBrush}" VerticalAlignment="Center" />
-                                    <TextBox Grid.Column="1" Text="{Binding McpEndpointText}" IsReadOnly="True" />
+                                    <TextBox Grid.Column="1" Text="{Binding McpEndpointText, Mode=OneWay}" IsReadOnly="True" />
                                 </Grid>
 
                                 <Grid Margin="0,0,0,8">
@@ -421,7 +437,7 @@
                                         <ColumnDefinition Width="*" />
                                     </Grid.ColumnDefinitions>
                                     <TextBlock Grid.Column="0" Text="Local Bridge Server:" Foreground="{StaticResource SubTextBrush}" VerticalAlignment="Center" />
-                                    <TextBox Grid.Column="1" Text="{Binding BridgeHostPortText}" IsReadOnly="True" />
+                                    <TextBox Grid.Column="1" Text="{Binding BridgeHostPortText, Mode=OneWay}" IsReadOnly="True" />
                                 </Grid>
 
                                 <Grid Margin="0,0,0,12">
@@ -431,7 +447,7 @@
                                         <ColumnDefinition Width="Auto" />
                                     </Grid.ColumnDefinitions>
                                     <TextBlock Grid.Column="0" Text="Mã Token xác thực:" Foreground="{StaticResource SubTextBrush}" VerticalAlignment="Center" />
-                                    <TextBox Grid.Column="1" Text="{Binding DisplayedApiTokenText}" IsReadOnly="True" Margin="0,0,8,0" />
+                                    <TextBox Grid.Column="1" Text="{Binding DisplayedApiTokenText, Mode=OneWay}" IsReadOnly="True" Margin="0,0,8,0" />
                                     <WrapPanel Grid.Column="2">
                                         <Button Content="Ẩn/Hiện" Command="{Binding ToggleTokenMaskCommand}" Padding="8,4" Margin="0,0,4,0" />
                                         <Button Content="Sao chép Token" Command="{Binding CopyTokenCommand}" Padding="8,4" Margin="0,0,4,0" />

@@ -6,6 +6,7 @@ using AIBridge.Infrastructure;
 using AIBridge.Models;
 using AIBridge.Services;
 using AIBridge.ViewModels;
+using AIBridge.Views;
 using ModelContextProtocol.Client;
 using Xunit;
 
@@ -403,5 +404,43 @@ public class Phase08UiAndRuntimeTests : IDisposable
         // Workspace set to test dir
         vm.WorkspacePath = _testDir;
         Assert.Equal("Bật kết nối ChatGPT", vm.NextActionText);
+    }
+
+    [Fact]
+    public void MainWindow_CanBeInstantiatedAtRuntime_WithoutThrowing()
+    {
+        Exception? exception = null;
+        var thread = new System.Threading.Thread(() =>
+        {
+            try
+            {
+                var logService = new LogService();
+                var configService = new ConfigService(logService, Path.Combine(_testDir, "test_config.json"));
+                var taskRegistry = new TaskRegistry();
+                var taskService = new TaskService(logService, taskRegistry);
+                var envService = new AntigravityEnvironmentService(logService);
+                var runner = new AntigravityRunner(logService, envService);
+                var bridgeServer = new BridgeServer(configService, logService, taskService, taskRegistry, envService, runner);
+
+                var vm = new MainViewModel(configService, logService, taskService, envService, runner, bridgeServer);
+                var window = new MainWindow
+                {
+                    DataContext = vm
+                };
+                Assert.NotNull(window);
+            }
+            catch (Exception ex)
+            {
+                exception = ex;
+            }
+        });
+        thread.SetApartmentState(System.Threading.ApartmentState.STA);
+        thread.Start();
+        thread.Join();
+
+        if (exception != null)
+        {
+            throw new Exception($"MainWindow runtime instantiation failed: {exception.Message}", exception);
+        }
     }
 }
