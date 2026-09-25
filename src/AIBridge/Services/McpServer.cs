@@ -60,6 +60,10 @@ public class McpServer : IMcpServer, IDisposable
         _codingAgentService = codingAgentService ?? throw new ArgumentNullException(nameof(codingAgentService));
         _humanApprovalService = humanApprovalService ?? throw new ArgumentNullException(nameof(humanApprovalService));
         _taskRegistry = taskRegistry ?? new TaskRegistry();
+
+        var cfg = _configService.LoadConfig();
+        BindAddress = string.IsNullOrWhiteSpace(cfg.McpHost) ? "127.0.0.1" : cfg.McpHost;
+        Port = cfg.McpPort > 0 ? cfg.McpPort : 8788;
     }
 
     public async Task<bool> StartAsync()
@@ -319,7 +323,7 @@ public class AIBridgeMcpToolHandlers
         var status = new
         {
             version = "0.8.0",
-            restStatus = "RUNNING (port 8787)",
+            restStatus = $"RUNNING (port {cfg.BridgePort})",
             mcpStatus = $"RUNNING (port {_mcpServer.Port})",
             workspaceConfigured = !string.IsNullOrWhiteSpace(cfg.WorkspacePath),
             gitAvailable = true,

@@ -403,7 +403,7 @@ public class Phase08UiAndRuntimeTests : IDisposable
 
         // Workspace set to test dir
         vm.WorkspacePath = _testDir;
-        Assert.Equal("Bật kết nối ChatGPT", vm.NextActionText);
+        Assert.Equal("Bật MCP cục bộ", vm.NextActionText);
     }
 
     [Fact]
@@ -442,5 +442,37 @@ public class Phase08UiAndRuntimeTests : IDisposable
         {
             throw new Exception($"MainWindow runtime instantiation failed: {exception.Message}", exception);
         }
+    }
+
+    [Fact]
+    public void McpEndpoint_SingleSourceOfTruth_UiAndServerEndpointCannotDiverge()
+    {
+        var logService = new LogService();
+        var configService = new ConfigService(logService, Path.Combine(_testDir, "test_config.json"));
+        var cfg = configService.LoadConfig();
+        cfg.McpHost = "127.0.0.1";
+        cfg.McpPort = 8799;
+        configService.SaveConfig(cfg);
+
+        var taskRegistry = new TaskRegistry();
+        var taskService = new TaskService(logService, taskRegistry);
+        var envService = new AntigravityEnvironmentService(logService);
+        var runner = new AntigravityRunner(logService, envService);
+        var bridgeServer = new BridgeServer(configService, logService, taskService, taskRegistry, envService, runner);
+
+        var brainService = new AIBrainService(logService, configService, new AIBrainProviderRegistry());
+        var planningService = new PlanningService(brainService, new PlanValidator(), new FileProjectPlanStore(_testDir));
+        var promptService = new ExecutionPromptService(new PromptValidator(), logService: logService);
+        var codingAgentService = new CodingAgentService(new CodingAgentRegistry(), taskService, new FileProjectPlanStore(_testDir), new PromptValidator(), taskRegistry: taskRegistry, logService: logService);
+        var humanApprovalService = new HumanApprovalService();
+
+        var mcpServer = new McpServer(configService, logService, taskService, planningService, promptService, codingAgentService, humanApprovalService, taskRegistry);
+
+        var vm = new MainViewModel(configService, logService, taskService, envService, runner, bridgeServer, mcpServer: mcpServer);
+
+        // Verify McpServer and MainViewModel endpoint matches configured port 8799
+        Assert.Equal("http://127.0.0.1:8799/mcp", mcpServer.EndpointUrl);
+        Assert.Equal("http://127.0.0.1:8799/mcp", vm.McpEndpointText);
+        Assert.Equal(mcpServer.EndpointUrl, vm.McpEndpointText);
     }
 }

@@ -201,7 +201,7 @@
                                             Background="{StaticResource PrimaryBrush}" Foreground="#1E1E2E" FontWeight="Bold" Padding="14,8" Margin="0,0,10,0" />
                                     <Button Content="Chuyển đến Thực thi" Command="{Binding NavigateCommand}" CommandParameter="Execution" 
                                             Background="{StaticResource AccentBrush}" Foreground="#1E1E2E" FontWeight="Bold" Padding="14,8" Margin="0,0,10,0" />
-                                    <Button Content="Bật kết nối ChatGPT" Command="{Binding StartMcpCommand}" 
+                                    <Button Content="Bật MCP cục bộ" Command="{Binding StartMcpCommand}" 
                                             Visibility="{Binding IsMcpRunning, Converter={StaticResource InverseBool}}"
                                             Background="{StaticResource AccentBrush}" Foreground="#1E1E2E" FontWeight="Bold" Padding="14,8" />
                                 </WrapPanel>

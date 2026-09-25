@@ -576,7 +576,6 @@ public class MainViewModel : ObservableObject
 
     private string _mcpStatusText = "STOPPED";
     private bool _isMcpRunning;
-    private string _mcpEndpointText = "http://127.0.0.1:8788/mcp";
     private string _mcpAuthStatusText = "ENABLED";
     private string _mcpActivityText = "No recent MCP activity";
 
@@ -601,8 +600,14 @@ public class MainViewModel : ObservableObject
 
     public string McpEndpointText
     {
-        get => _mcpEndpointText;
-        set => SetProperty(ref _mcpEndpointText, value);
+        get
+        {
+            if (_mcpServer != null && !string.IsNullOrEmpty(_mcpServer.EndpointUrl))
+            {
+                return _mcpServer.EndpointUrl;
+            }
+            return $"http://{_config.McpHost}:{_config.McpPort}/mcp";
+        }
     }
 
     public string McpAuthStatusText
@@ -659,7 +664,7 @@ public class MainViewModel : ObservableObject
     public string SystemStatusText => IsOverviewSystemReady ? "● Hệ thống sẵn sàng" : "⚠ Cần thiết lập";
     public string SystemStatusColor => IsOverviewSystemReady ? "#50FA7B" : "#FFB86C";
 
-    public string ChatGptStatusVietnamese => (IsMcpRunning || IsBridgeRunning) ? "Đã kết nối" : "Chưa kết nối";
+    public string ChatGptStatusVietnamese => IsMcpRunning ? "MCP cục bộ: Đang hoạt động" : "MCP cục bộ: Đã tắt";
 
     public string AntigravityStatusVietnamese
     {
@@ -716,7 +721,7 @@ public class MainViewModel : ObservableObject
             }
             if (!IsMcpRunning && !IsBridgeRunning)
             {
-                return "Bật kết nối ChatGPT";
+                return "Bật MCP cục bộ";
             }
             if (IsCliMissing)
             {
@@ -890,6 +895,8 @@ public class MainViewModel : ObservableObject
         {
             IsMcpRunning = running;
             McpStatusText = running ? $"RUNNING ({_mcpServer.BindAddress}:{_mcpServer.Port})" : "STOPPED";
+            OnPropertyChanged(nameof(McpEndpointText));
+            NotifyUiStateChanged();
         });
 
         StartMcpCommand = new AsyncRelayCommand(ExecuteStartMcpAsync, () => !IsMcpRunning);
@@ -1882,12 +1889,14 @@ public class MainViewModel : ObservableObject
         {
             IsMcpRunning = true;
             McpStatusText = $"RUNNING ({_mcpServer.BindAddress}:{_mcpServer.Port})";
+            OnPropertyChanged(nameof(McpEndpointText));
             _logService.LogInfo($"MCP Server started successfully at {_mcpServer.EndpointUrl}");
         }
         else
         {
             IsMcpRunning = false;
             McpStatusText = "FAILED TO START";
+            OnPropertyChanged(nameof(McpEndpointText));
             _logService.LogError("Failed to start MCP Server.");
         }
     }
@@ -1897,6 +1906,7 @@ public class MainViewModel : ObservableObject
         await _mcpServer.StopAsync();
         IsMcpRunning = false;
         McpStatusText = "STOPPED";
+        OnPropertyChanged(nameof(McpEndpointText));
         _logService.LogInfo("MCP Server stopped.");
     }
 
