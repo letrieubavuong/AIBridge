@@ -31,6 +31,7 @@ public class BridgeServer : IBridgeServer
     private readonly IPlanningService _planningService;
     private readonly IExecutionPromptService _executionPromptService;
     private readonly ICodingAgentRegistry _codingAgentRegistry;
+    private readonly IHumanApprovalService _humanApprovalService;
     private readonly ICodingAgentService _codingAgentService;
 
     private WebApplication? _app;
@@ -88,7 +89,8 @@ public class BridgeServer : IBridgeServer
         IPlanningService? planningService = null,
         IExecutionPromptService? executionPromptService = null,
         ICodingAgentRegistry? codingAgentRegistry = null,
-        ICodingAgentService? codingAgentService = null)
+        ICodingAgentService? codingAgentService = null,
+        IHumanApprovalService? humanApprovalService = null)
     {
         _configService = configService ?? throw new ArgumentNullException(nameof(configService));
         _logService = logService ?? throw new ArgumentNullException(nameof(logService));
@@ -100,6 +102,7 @@ public class BridgeServer : IBridgeServer
         _gitCommandService = gitCommandService ?? new GitCommandService(_logService);
         _gitEnvironmentService = gitEnvironmentService ?? new GitEnvironmentService(_logService, _gitCommandService);
         _gitEvidenceService = gitEvidenceService ?? new GitEvidenceService(_logService, _gitEnvironmentService, _gitCommandService);
+        _humanApprovalService = humanApprovalService ?? new HumanApprovalService();
 
         if (brainProviderRegistry == null)
         {
@@ -131,7 +134,7 @@ public class BridgeServer : IBridgeServer
             _codingAgentRegistry = codingAgentRegistry;
         }
 
-        _codingAgentService = codingAgentService ?? new CodingAgentService(_codingAgentRegistry, _taskService, planStore, promptValidator, _gitEvidenceService, _taskRegistry, _logService);
+        _codingAgentService = codingAgentService ?? new CodingAgentService(_codingAgentRegistry, _taskService, planStore, promptValidator, _gitEvidenceService, _taskRegistry, _humanApprovalService, _logService);
     }
 
     public async Task<bool> StartAsync()
@@ -1045,15 +1048,22 @@ public class BridgeServer : IBridgeServer
                     plan, phaseId, taskId, workspacePath: config.WorkspacePath, cancellationToken: context.RequestAborted);
             }
 
-            bool confirmHuman = reqBody?.ConfirmHumanGate ?? false;
             int timeoutSec = reqBody?.TimeoutSeconds > 0 ? reqBody.TimeoutSeconds : config.CodingAgentTimeoutSeconds;
 
             var result = await _codingAgentService.DispatchTaskAsync(
-                plan, phaseId, taskId, promptPackage, config.WorkspacePath, confirmHumanGate: confirmHuman, timeoutSeconds: timeoutSec, cancellationToken: context.RequestAborted);
+                plan, phaseId, taskId, promptPackage, config.WorkspacePath, timeoutSeconds: timeoutSec, cancellationToken: context.RequestAborted);
 
             if (!result.Success && result.ErrorCode == CodingAgentErrorCode.HumanApprovalRequired)
             {
-                return Results.Json(result, statusCode: StatusCodes.Status403Forbidden);
+                return Results.Json(new
+                {
+                    errorCode = CodingAgentErrorCode.HumanApprovalRequired,
+                    errorMessage = result.ErrorMessage,
+                    projectId = plan.ProjectId,
+                    phaseId = phaseId,
+                    taskId = taskId,
+                    planVersion = plan.Version
+                }, statusCode: StatusCodes.Status400BadRequest);
             }
             else if (!result.Success && result.ErrorCode == CodingAgentErrorCode.ConcurrencyConflict)
             {
@@ -1061,6 +1071,48 @@ public class BridgeServer : IBridgeServer
             }
 
             return Results.Ok(result);
+        });
+
+        // POST /api/projects/{projectId}/phases/{phaseId}/tasks/{taskId}/approve-execution
+        // LOCAL HUMAN CONTROL
+        // NOT FOR CHATGPT/MCP TOOL EXPOSURE
+        app.MapPost("/api/projects/{projectId}/phases/{phaseId}/tasks/{taskId}/approve-execution", async (string projectId, string phaseId, string taskId, HttpContext context) =>
+        {
+            var config = _configService.LoadConfig();
+            var token = ExtractToken(context.Request);
+            if (!ValidateToken(token, config.ApiToken))
+            {
+                return Results.Json(new ErrorResponse { Error = "UNAUTHORIZED", Message = "Invalid or missing Bearer token." }, statusCode: StatusCodes.Status401Unauthorized);
+            }
+
+            var plan = await _planningService.GetPlanAsync(projectId);
+            if (plan == null)
+            {
+                return Results.Json(new ErrorResponse { Error = "PLAN_NOT_FOUND", Message = $"Project plan '{projectId}' not found." }, statusCode: StatusCodes.Status404NotFound);
+            }
+
+            var phase = plan.Phases.FirstOrDefault(p => string.Equals(p.PhaseId, phaseId, StringComparison.OrdinalIgnoreCase));
+            if (phase == null)
+            {
+                return Results.Json(new ErrorResponse { Error = "PHASE_NOT_FOUND", Message = $"Phase '{phaseId}' not found in project '{projectId}'." }, statusCode: StatusCodes.Status404NotFound);
+            }
+
+            var task = phase.Tasks.FirstOrDefault(t => string.Equals(t.TaskId, taskId, StringComparison.OrdinalIgnoreCase));
+            if (task == null)
+            {
+                return Results.Json(new ErrorResponse { Error = "TASK_NOT_FOUND", Message = $"Task '{taskId}' not found in phase '{phaseId}'." }, statusCode: StatusCodes.Status404NotFound);
+            }
+
+            var approval = await _humanApprovalService.ApproveAsync(new HumanApprovalRequest
+            {
+                ProjectId = plan.ProjectId,
+                PhaseId = phase.PhaseId,
+                TaskId = task.TaskId,
+                PlanVersion = plan.Version,
+                ApprovedBy = "LocalHuman"
+            }, context.RequestAborted);
+
+            return Results.Ok(approval);
         });
 
         // GET /api/executions/current

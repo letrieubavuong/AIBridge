@@ -37,9 +37,19 @@ HUMAN APPROVAL GATE (Explicit Human Approval Required — 0 Tasks Executed in Ph
 
 ## Current Status
 
-`Phase 07 — ChatGPT Web Brain & Coding-Agent Dispatch Foundation` (Completed)
+`Phase 07 — ChatGPT Web Brain & Coding-Agent Dispatch Foundation (Final Fix)` (Completed)
 
 Phase 07 implements the execution-preparation and coding-agent dispatch layer. ChatGPT Web is the default AI Brain (no paid model API keys required). External instructions are packaged into canonical `ExecutionPromptPackage` instances, validated against stored authoritative plan criteria, sanitized, hashed, and dispatched via provider-independent `ICodingAgentService` and `AntigravityCodingAgent` to existing process runners and Git evidence tools. Successful agent execution transitions tasks to `Reviewing` (NOT `Passed`).
+
+### Phase 07 Final Fix Security & Evidence Model
+
+* **Trusted Human Approval State**: Human approval is a trusted AIBridge state managed by `IHumanApprovalService`. External Brain/API callers cannot self-approve Human Gates by sending boolean flags in HTTP dispatch DTOs.
+* **Context & Plan-Version Scoped Approval**: Human approvals are bound to ProjectId, PhaseId, TaskId, and exact PlanVersion. Re-planning invalidates stale approvals. Approvals use single-use consumption semantics upon task dispatch.
+* **Local Control Endpoint**: `POST /api/projects/{projectId}/phases/{phaseId}/tasks/{taskId}/approve-execution` represents a trusted local human action (NOT for ChatGPT/MCP tool exposure).
+* **Execution & Evidence Identity Correlation**: Logical TaskPlan identity (`TaskId`), Execution identity (`ExecutionId`), and Runtime AgentTask identity (`AgentTaskId`) are explicitly distinguished and correlated. Git evidence is recorded and queried using the exact runtime execution identity (`AgentTaskId`/`ExecutionId`).
+* **ExecutionReviewPackage**: Contains Git evidence correlated to that specific execution attempt. Successful workspace executions with 0 changes and evidence collection failures/unavailability are explicitly distinguished.
+* **Agent Success != Task PASS**: Agent success sets status to `Reviewing`. Human or Brain review of `ExecutionReviewPackage` is required before moving to `Passed`.
+* **ChatGPT Web Default Brain**: ChatGPT Web remains the default Brain without requiring OpenAI/Claude/Gemini API keys.
 
 ---
 
@@ -57,6 +67,8 @@ CHATGPT WEB
 AIBridge Desktop
 = LOCAL EXECUTION / STATE / EVIDENCE BRIDGE
   │
+  ├── IHumanApprovalService (Trusted Human Gate state)
+  │
   ▼
 Coding Agent
   │
@@ -70,7 +82,7 @@ Workspace
 Git / GitHub
   │
   ▼
-Evidence
+Evidence (Correlated via ExecutionId / AgentTaskId)
   │
   └──────────────────────► ChatGPT Web
 ```

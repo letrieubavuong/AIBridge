@@ -75,7 +75,25 @@ public class TaskRegistry : ITaskRegistry
 
     public GitEvidence? GetGitEvidence(string taskId)
     {
-        return _records.TryGetValue(taskId, out var record) ? record.GitEvidence : null;
+        if (string.IsNullOrWhiteSpace(taskId)) return null;
+
+        if (_records.TryGetValue(taskId, out var record) && record.GitEvidence != null)
+        {
+            return record.GitEvidence;
+        }
+
+        lock (_lock)
+        {
+            var match = _records.Values
+                .Where(r => string.Equals(r.ExecutionId, taskId, StringComparison.OrdinalIgnoreCase) ||
+                            string.Equals(r.AgentTaskId, taskId, StringComparison.OrdinalIgnoreCase) ||
+                            string.Equals(r.TaskId, taskId, StringComparison.OrdinalIgnoreCase) ||
+                            (r.Task != null && string.Equals(r.Task.Id, taskId, StringComparison.OrdinalIgnoreCase)))
+                .OrderByDescending(r => r.Task?.CreatedAt ?? DateTime.MinValue)
+                .FirstOrDefault();
+
+            return match?.GitEvidence;
+        }
     }
 
     public TaskExecutionRecord? GetCurrentRecord()

@@ -83,6 +83,7 @@ public class AntigravityCodingAgent : ICodingAgent
             return new CodingAgentExecutionResult
             {
                 ExecutionId = request.ExecutionId,
+                AgentTaskId = agentTask.Id,
                 AgentId = Id,
                 Success = false,
                 ExitCode = -1,
@@ -100,6 +101,7 @@ public class AntigravityCodingAgent : ICodingAgent
             return new CodingAgentExecutionResult
             {
                 ExecutionId = request.ExecutionId,
+                AgentTaskId = agentTask.Id,
                 AgentId = Id,
                 Success = false,
                 ExitCode = -1,
@@ -124,6 +126,7 @@ public class AntigravityCodingAgent : ICodingAgent
         return new CodingAgentExecutionResult
         {
             ExecutionId = request.ExecutionId,
+            AgentTaskId = agentTask.Id,
             AgentId = Id,
             Success = result.Success,
             ExitCode = result.ExitCode,

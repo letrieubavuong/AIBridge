@@ -18,6 +18,7 @@ public class CodingAgentServiceTests : IDisposable
     private readonly TaskService _taskService;
     private readonly PromptValidator _promptValidator;
     private readonly ExecutionPromptService _promptService;
+    private readonly HumanApprovalService _humanApprovalService;
     private readonly CodingAgentService _service;
 
     public CodingAgentServiceTests()
@@ -35,8 +36,9 @@ public class CodingAgentServiceTests : IDisposable
         _taskService = new TaskService(logService, taskRegistry);
         _promptValidator = new PromptValidator();
         _promptService = new ExecutionPromptService(_promptValidator, logService: logService);
+        _humanApprovalService = new HumanApprovalService();
 
-        _service = new CodingAgentService(_registry, _taskService, _store, _promptValidator, taskRegistry: taskRegistry, logService: logService);
+        _service = new CodingAgentService(_registry, _taskService, _store, _promptValidator, taskRegistry: taskRegistry, humanApprovalService: _humanApprovalService, logService: logService);
     }
 
     public void Dispose()
@@ -127,15 +129,23 @@ public class CodingAgentServiceTests : IDisposable
 
         var pkg = await _promptService.PreparePromptPackageAsync(plan, "phase-01", "task-01-01", workspacePath: _testDir);
 
-        // Dispatch without explicit confirmHumanGate -> Blocked
-        var result = await _service.DispatchTaskAsync(plan, "phase-01", "task-01-01", pkg, _testDir, confirmHumanGate: false);
+        // Dispatch without trusted approval -> Blocked
+        var result = await _service.DispatchTaskAsync(plan, "phase-01", "task-01-01", pkg, _testDir);
 
         Assert.False(result.Success);
         Assert.Equal(CodingAgentErrorCode.HumanApprovalRequired, result.ErrorCode);
         Assert.Equal(0, _fakeAgent.CallCount);
 
-        // Dispatch with explicit confirmHumanGate -> Allowed
-        var allowedResult = await _service.DispatchTaskAsync(plan, "phase-01", "task-01-01", pkg, _testDir, confirmHumanGate: true);
+        // Approve via trusted HumanApprovalService -> Allowed
+        await _humanApprovalService.ApproveAsync(new HumanApprovalRequest
+        {
+            ProjectId = plan.ProjectId,
+            PhaseId = "phase-01",
+            TaskId = "task-01-01",
+            PlanVersion = plan.Version
+        });
+
+        var allowedResult = await _service.DispatchTaskAsync(plan, "phase-01", "task-01-01", pkg, _testDir);
         Assert.True(allowedResult.Success);
         Assert.Equal(1, _fakeAgent.CallCount);
     }

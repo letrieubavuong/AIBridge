@@ -520,6 +520,8 @@ public class MainViewModel : ObservableObject
     public ICommand DispatchTaskCommand { get; }
     public ICommand CancelExecutionCommand { get; }
 
+    private readonly IHumanApprovalService _humanApprovalService;
+
     public MainViewModel(
         IConfigService configService,
         ILogService logService,
@@ -536,7 +538,8 @@ public class MainViewModel : ObservableObject
         IPlanningService? planningService = null,
         IExecutionPromptService? executionPromptService = null,
         ICodingAgentRegistry? codingAgentRegistry = null,
-        ICodingAgentService? codingAgentService = null)
+        ICodingAgentService? codingAgentService = null,
+        IHumanApprovalService? humanApprovalService = null)
     {
         _configService = configService ?? throw new ArgumentNullException(nameof(configService));
         _logService = logService ?? throw new ArgumentNullException(nameof(logService));
@@ -549,6 +552,7 @@ public class MainViewModel : ObservableObject
         _gitEnvironmentService = gitEnvironmentService ?? new GitEnvironmentService(_logService, _gitCommandService);
         _gitEvidenceService = gitEvidenceService ?? new GitEvidenceService(_logService, _gitEnvironmentService, _gitCommandService);
         _taskRegistry = taskRegistry ?? new TaskRegistry();
+        _humanApprovalService = humanApprovalService ?? new HumanApprovalService();
 
         if (brainProviderRegistry == null)
         {
@@ -580,7 +584,7 @@ public class MainViewModel : ObservableObject
             _codingAgentRegistry = codingAgentRegistry;
         }
 
-        _codingAgentService = codingAgentService ?? new CodingAgentService(_codingAgentRegistry, _taskService, planStore, promptValidator, _gitEvidenceService, _taskRegistry, _logService);
+        _codingAgentService = codingAgentService ?? new CodingAgentService(_codingAgentRegistry, _taskService, planStore, promptValidator, _gitEvidenceService, _taskRegistry, _humanApprovalService, _logService);
 
         BrowseAntigravityCommand = new RelayCommand(ExecuteBrowseAntigravity);
         TestAntigravityCommand = new AsyncRelayCommand(ExecuteTestAntigravityAsync);
@@ -1463,8 +1467,7 @@ public class MainViewModel : ObservableObject
                 CurrentPromptPackage.PhaseId,
                 CurrentPromptPackage.TaskId,
                 CurrentPromptPackage,
-                WorkspacePath,
-                confirmHumanGate: true);
+                WorkspacePath);
 
             if (result.Success)
             {

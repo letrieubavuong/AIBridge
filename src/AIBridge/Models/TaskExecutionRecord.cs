@@ -14,6 +14,7 @@ public class TaskExecutionRecord
     public DateTime StartedAt { get; set; }
     public DateTime? CompletedAt { get; set; }
     public int AttemptNumber { get; set; } = 1;
+    public string AgentTaskId { get; set; } = string.Empty;
 
     public AgentResult? Result { get; set; }
     public CodingAgentExecutionResult? AgentExecutionResult { get; set; }

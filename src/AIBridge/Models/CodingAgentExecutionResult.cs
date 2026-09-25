@@ -18,4 +18,5 @@ public class CodingAgentExecutionResult
     public bool WasCancelled { get; set; }
     public bool TimedOut { get; set; }
     public bool PermissionDenied { get; set; }
+    public string AgentTaskId { get; set; } = string.Empty;
 }

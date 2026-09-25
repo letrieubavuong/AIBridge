@@ -16,8 +16,7 @@ public interface ICodingAgentService
         string taskId,
         ExecutionPromptPackage? promptPackage,
         out string errorReason,
-        out string errorCode,
-        bool confirmHumanGate = false);
+        out string errorCode);
 
     Task<CodingAgentExecutionResult> DispatchTaskAsync(
         ProjectPlan plan,
@@ -25,7 +24,6 @@ public interface ICodingAgentService
         string taskId,
         ExecutionPromptPackage promptPackage,
         string workspacePath = "",
-        bool confirmHumanGate = false,
         int timeoutSeconds = 600,
         CancellationToken cancellationToken = default);
 

@@ -17,6 +17,7 @@ public class CodingAgentService : ICodingAgentService
     private readonly IPromptValidator _promptValidator;
     private readonly IGitEvidenceService? _gitEvidenceService;
     private readonly ITaskRegistry? _taskRegistry;
+    private readonly IHumanApprovalService? _humanApprovalService;
     private readonly ILogService? _logService;
 
     private readonly List<TaskExecutionRecord> _executionHistory = new();
@@ -31,6 +32,7 @@ public class CodingAgentService : ICodingAgentService
         IPromptValidator promptValidator,
         IGitEvidenceService? gitEvidenceService = null,
         ITaskRegistry? taskRegistry = null,
+        IHumanApprovalService? humanApprovalService = null,
         ILogService? logService = null)
     {
         _agentRegistry = agentRegistry ?? throw new ArgumentNullException(nameof(agentRegistry));
@@ -39,6 +41,7 @@ public class CodingAgentService : ICodingAgentService
         _promptValidator = promptValidator ?? throw new ArgumentNullException(nameof(promptValidator));
         _gitEvidenceService = gitEvidenceService;
         _taskRegistry = taskRegistry;
+        _humanApprovalService = humanApprovalService;
         _logService = logService;
     }
 
@@ -59,7 +62,7 @@ public class CodingAgentService : ICodingAgentService
 
             foreach (var task in phase.Tasks.OrderBy(t => t.TaskNumber))
             {
-                if (IsTaskDispatchableInternal(plan, phase, task, null, out _, out _, confirmHumanGate: false))
+                if (IsTaskDispatchableInternal(plan, phase, task, null, out _, out _))
                 {
                     list.Add(task);
                 }
@@ -80,8 +83,7 @@ public class CodingAgentService : ICodingAgentService
         string taskId,
         ExecutionPromptPackage? promptPackage,
         out string errorReason,
-        out string errorCode,
-        bool confirmHumanGate = false)
+        out string errorCode)
     {
         errorReason = string.Empty;
         errorCode = string.Empty;
@@ -116,7 +118,7 @@ public class CodingAgentService : ICodingAgentService
             return false;
         }
 
-        return IsTaskDispatchableInternal(plan, phase, task, promptPackage, out errorReason, out errorCode, confirmHumanGate);
+        return IsTaskDispatchableInternal(plan, phase, task, promptPackage, out errorReason, out errorCode);
     }
 
     private bool IsTaskDispatchableInternal(
@@ -125,8 +127,7 @@ public class CodingAgentService : ICodingAgentService
         TaskPlan task,
         ExecutionPromptPackage? promptPackage,
         out string errorReason,
-        out string errorCode,
-        bool confirmHumanGate)
+        out string errorCode)
     {
         errorReason = string.Empty;
         errorCode = string.Empty;
@@ -166,11 +167,15 @@ public class CodingAgentService : ICodingAgentService
             return false;
         }
 
-        if (task.RequiresHumanApproval && !confirmHumanGate)
+        if (task.RequiresHumanApproval)
         {
-            errorReason = $"Task '{task.TaskId}' requires explicit human approval before dispatch.";
-            errorCode = CodingAgentErrorCode.HumanApprovalRequired;
-            return false;
+            var approval = _humanApprovalService?.GetValidApprovalAsync(plan.ProjectId, phase.PhaseId, task.TaskId, plan.Version).GetAwaiter().GetResult();
+            if (approval == null || !approval.IsValid)
+            {
+                errorReason = $"Task '{task.TaskId}' requires explicit human approval before dispatch.";
+                errorCode = CodingAgentErrorCode.HumanApprovalRequired;
+                return false;
+            }
         }
 
         if (promptPackage != null)
@@ -233,14 +238,13 @@ public class CodingAgentService : ICodingAgentService
         string taskId,
         ExecutionPromptPackage promptPackage,
         string workspacePath = "",
-        bool confirmHumanGate = false,
         int timeoutSeconds = 600,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(plan);
         ArgumentNullException.ThrowIfNull(promptPackage);
 
-        if (!IsTaskDispatchable(plan, phaseId, taskId, promptPackage, out string errorReason, out string errorCode, confirmHumanGate))
+        if (!IsTaskDispatchable(plan, phaseId, taskId, promptPackage, out string errorReason, out string errorCode))
         {
             return new CodingAgentExecutionResult
             {
@@ -253,6 +257,19 @@ public class CodingAgentService : ICodingAgentService
                 StartedAt = DateTime.Now,
                 CompletedAt = DateTime.Now
             };
+        }
+
+        var phase = plan.Phases.First(p => string.Equals(p.PhaseId, phaseId, StringComparison.OrdinalIgnoreCase));
+        var task = phase.Tasks.First(t => string.Equals(t.TaskId, taskId, StringComparison.OrdinalIgnoreCase));
+
+        // Consume human approval upon starting dispatch
+        if (task.RequiresHumanApproval && _humanApprovalService != null)
+        {
+            var approval = await _humanApprovalService.GetValidApprovalAsync(plan.ProjectId, phase.PhaseId, task.TaskId, plan.Version, cancellationToken);
+            if (approval != null)
+            {
+                await _humanApprovalService.ConsumeApprovalAsync(approval.ApprovalId, cancellationToken);
+            }
         }
 
         if (!_taskService.TryAcquireExecutionSlot())
@@ -269,9 +286,6 @@ public class CodingAgentService : ICodingAgentService
                 CompletedAt = DateTime.Now
             };
         }
-
-        var phase = plan.Phases.First(p => string.Equals(p.PhaseId, phaseId, StringComparison.OrdinalIgnoreCase));
-        var task = phase.Tasks.First(t => string.Equals(t.TaskId, taskId, StringComparison.OrdinalIgnoreCase));
 
         var agent = _agentRegistry.GetSelectedAgent();
 
@@ -309,6 +323,12 @@ public class CodingAgentService : ICodingAgentService
             RequestedAt = DateTime.Now
         };
 
+        int attemptNumber;
+        lock (_lock)
+        {
+            attemptNumber = Math.Max(task.RetryCount + 1, _executionHistory.Count(e => string.Equals(e.TaskId, task.TaskId, StringComparison.OrdinalIgnoreCase)) + 1);
+        }
+
         var record = new TaskExecutionRecord
         {
             ExecutionId = req.ExecutionId,
@@ -319,7 +339,7 @@ public class CodingAgentService : ICodingAgentService
             PlanVersion = req.PlanVersion,
             AgentId = agent.Id,
             StartedAt = req.RequestedAt,
-            AttemptNumber = task.RetryCount + 1
+            AttemptNumber = attemptNumber
         };
 
         lock (_lock)
@@ -382,8 +402,22 @@ public class CodingAgentService : ICodingAgentService
             _taskService.ReleaseExecutionSlot();
         }
 
-        // Fetch Git Evidence if available from TaskRegistry or GitEvidenceService
-        GitEvidence? evidence = _taskRegistry?.GetGitEvidence(task.TaskId);
+        record.AgentTaskId = result.AgentTaskId;
+
+        // Fetch Git Evidence correlated with exact AgentTaskId / ExecutionId
+        GitEvidence? evidence = null;
+        if (!string.IsNullOrWhiteSpace(result.AgentTaskId))
+        {
+            evidence = _taskRegistry?.GetGitEvidence(result.AgentTaskId);
+        }
+        if (evidence == null && !string.IsNullOrWhiteSpace(req.ExecutionId))
+        {
+            evidence = _taskRegistry?.GetGitEvidence(req.ExecutionId);
+        }
+        if (evidence == null && !string.IsNullOrWhiteSpace(task.TaskId))
+        {
+            evidence = _taskRegistry?.GetGitEvidence(task.TaskId);
+        }
 
         // Update task status based on result
         // CRITICAL REQUIREMENT: Successful execution moves to Reviewing (NOT Passed)!

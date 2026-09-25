@@ -117,7 +117,6 @@ public class AntigravityAdapterRealAcceptanceTest : IDisposable
         var result = await _service.DispatchTaskAsync(
             plan, "phase-07", "task-07-01",
             promptPackage, _tempWorkspace,
-            confirmHumanGate: false,
             timeoutSeconds: 300);
 
         Assert.NotNull(result);
@@ -206,7 +205,6 @@ public class AntigravityAdapterRealAcceptanceTest : IDisposable
         var result = await _service.DispatchTaskAsync(
             plan, "phase-utf8", "task-utf8-01",
             promptPackage, _tempWorkspace,
-            confirmHumanGate: false,
             timeoutSeconds: 300);
 
         Assert.NotNull(result);
