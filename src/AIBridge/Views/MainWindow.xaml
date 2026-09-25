@@ -4,609 +4,566 @@
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:viewmodels="clr-namespace:AIBridge.ViewModels"
+        xmlns:models="clr-namespace:AIBridge.Models"
         mc:Ignorable="d"
-        Title="AIBridge — Real Execution Foundation" 
-        Height="840" Width="1120"
-        MinHeight="660" MinWidth="900"
+        Title="AIBridge — Trợ lý điều phối phát triển phần mềm" 
+        Height="800" Width="1200"
+        MinHeight="600" MinWidth="900"
         WindowStartupLocation="CenterScreen"
         Background="{StaticResource BgBrush}">
 
-    <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto">
-        <Grid Margin="16" MinWidth="850">
-            <Grid.RowDefinitions>
-                <RowDefinition Height="Auto" />
-                <!-- 0. Header / Environment Status -->
-                <RowDefinition Height="Auto" />
-                <!-- 1. Local Bridge Panel + Git Panel + MCP Panel -->
-                <RowDefinition Height="Auto" />
-                <!-- 2. AI Brain & Progress Panel -->
-                <RowDefinition Height="Auto" />
-                <!-- 3. Configurations (Antigravity + Workspace) -->
-                <RowDefinition Height="*" />
-                <!-- 4. Main Content (Tabbed Area) -->
-            </Grid.RowDefinitions>
+    <Grid>
+        <Grid.ColumnDefinitions>
+            <!-- Left Sidebar (fixed 200px) -->
+            <ColumnDefinition Width="200" />
+            <!-- Right Content Area -->
+            <ColumnDefinition Width="*" />
+        </Grid.ColumnDefinitions>
 
-            <!-- 0. Header & Environment Overview -->
-            <Border Grid.Row="0" Background="{StaticResource CardBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="6" Padding="16,12" Margin="0,0,0,12">
-                <Grid>
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*" />
-                        <ColumnDefinition Width="Auto" />
-                    </Grid.ColumnDefinitions>
+        <!-- LEFT SIDEBAR -->
+        <Border Grid.Column="0" Background="#181824" BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,0,1,0">
+            <Grid Margin="12">
+                <Grid.RowDefinitions>
+                    <!-- Header -->
+                    <RowDefinition Height="Auto" />
+                    <!-- Navigation Menu -->
+                    <RowDefinition Height="*" />
+                    <!-- Footer / Settings -->
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
 
-                    <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
-                        <TextBlock Text="AIBridge" FontSize="20" FontWeight="Bold" Foreground="{StaticResource PrimaryBrush}" VerticalAlignment="Center"/>
-                        <TextBlock Text="— Environment Setup" FontSize="14" Foreground="{StaticResource SubTextBrush}" VerticalAlignment="Center" Margin="10,2,0,0"/>
+                <!-- Header -->
+                <StackPanel Grid.Row="0" Margin="4,8,4,24">
+                    <TextBlock Text="AIBridge" FontSize="22" FontWeight="Bold" Foreground="{StaticResource PrimaryBrush}" />
+                    <TextBlock Text="Trợ lý điều phối AI" FontSize="11" Foreground="{StaticResource SubTextBrush}" Margin="0,2,0,0" />
+                </StackPanel>
+
+                <!-- Navigation List -->
+                <StackPanel Grid.Row="1">
+                    <!-- Nav 1: Tổng quan -->
+                    <Button Command="{Binding NavigateCommand}" CommandParameter="Overview" 
+                            HorizontalContentAlignment="Left" Padding="12,10" Margin="0,0,0,6">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="📊 " FontSize="14" Margin="0,0,8,0"/>
+                            <TextBlock Text="Tổng quan" FontWeight="SemiBold" FontSize="13"/>
+                        </StackPanel>
+                    </Button>
+
+                    <!-- Nav 2: Dự án -->
+                    <Button Command="{Binding NavigateCommand}" CommandParameter="Project" 
+                            HorizontalContentAlignment="Left" Padding="12,10" Margin="0,0,0,6">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="📁 " FontSize="14" Margin="0,0,8,0"/>
+                            <TextBlock Text="Dự án" FontWeight="SemiBold" FontSize="13"/>
+                        </StackPanel>
+                    </Button>
+
+                    <!-- Nav 3: Thực thi -->
+                    <Button Command="{Binding NavigateCommand}" CommandParameter="Execution" 
+                            HorizontalContentAlignment="Left" Padding="12,10" Margin="0,0,0,6">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="⚡ " FontSize="14" Margin="0,0,8,0"/>
+                            <TextBlock Text="Thực thi" FontWeight="SemiBold" FontSize="13"/>
+                        </StackPanel>
+                    </Button>
+
+                    <!-- Nav 4: Kết nối -->
+                    <Button Command="{Binding NavigateCommand}" CommandParameter="Connection" 
+                            HorizontalContentAlignment="Left" Padding="12,10" Margin="0,0,0,6">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="🌐 " FontSize="14" Margin="0,0,8,0"/>
+                            <TextBlock Text="Kết nối" FontWeight="SemiBold" FontSize="13"/>
+                        </StackPanel>
+                    </Button>
+
+                    <!-- Nav 5: Nhật ký -->
+                    <Button Command="{Binding NavigateCommand}" CommandParameter="Logs" 
+                            HorizontalContentAlignment="Left" Padding="12,10" Margin="0,0,0,6">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="📋 " FontSize="14" Margin="0,0,8,0"/>
+                            <TextBlock Text="Nhật ký" FontWeight="SemiBold" FontSize="13"/>
+                        </StackPanel>
+                    </Button>
+                </StackPanel>
+
+                <!-- Footer: Cài đặt -->
+                <Button Grid.Row="2" Command="{Binding NavigateCommand}" CommandParameter="Settings" 
+                        HorizontalContentAlignment="Left" Padding="12,10" Margin="0,8,0,4">
+                    <StackPanel Orientation="Horizontal">
+                        <TextBlock Text="⚙️ " FontSize="14" Margin="0,0,8,0"/>
+                        <TextBlock Text="Cài đặt" FontWeight="SemiBold" FontSize="13"/>
                     </StackPanel>
-
-                    <WrapPanel Grid.Column="1" VerticalAlignment="Center" HorizontalAlignment="Right">
-                        <Border Background="#1E1E2E" Padding="10,4" CornerRadius="4" Margin="0,0,8,4">
-                            <StackPanel Orientation="Horizontal">
-                                <TextBlock Text="Windows: " Foreground="{StaticResource SubTextBrush}" FontSize="12"/>
-                                <TextBlock Text="READY" Foreground="{StaticResource AccentBrush}" FontWeight="SemiBold" FontSize="12"/>
-                            </StackPanel>
-                        </Border>
-                        <Border Background="#1E1E2E" Padding="10,4" CornerRadius="4" Margin="0,0,8,4">
-                            <StackPanel Orientation="Horizontal">
-                                <TextBlock Text="Antigravity CLI: " Foreground="{StaticResource SubTextBrush}" FontSize="12"/>
-                                <TextBlock Text="{Binding CliStateText}" Foreground="{StaticResource AccentBrush}" FontWeight="SemiBold" FontSize="12"/>
-                            </StackPanel>
-                        </Border>
-                        <Border Background="#1E1E2E" Padding="10,4" CornerRadius="4" Margin="0,0,8,4">
-                            <StackPanel Orientation="Horizontal">
-                                <TextBlock Text="Version: " Foreground="{StaticResource SubTextBrush}" FontSize="12"/>
-                                <TextBlock Text="{Binding CliVersionText}" Foreground="{StaticResource TextBrush}" FontWeight="SemiBold" FontSize="12"/>
-                            </StackPanel>
-                        </Border>
-                        <Border Background="#1E1E2E" Padding="10,4" CornerRadius="4" Margin="0,0,8,4">
-                            <StackPanel Orientation="Horizontal">
-                                <TextBlock Text="Auth: " Foreground="{StaticResource SubTextBrush}" FontSize="12"/>
-                                <TextBlock Text="{Binding AuthStateText}" Foreground="{StaticResource AccentBrush}" FontWeight="SemiBold" FontSize="12"/>
-                            </StackPanel>
-                        </Border>
-                        
-                        <Button Content="INSTALL ANTIGRAVITY CLI" 
-                                Command="{Binding InstallCliCommand}" 
-                                Visibility="{Binding IsCliMissing, Converter={StaticResource BoolToVis}}" 
-                                Background="{StaticResource WarningBrush}" 
-                                Foreground="#1E1E2E" 
-                                FontWeight="Bold" 
-                                Padding="10,4" 
-                                MinWidth="100"
-                                Margin="4,0,0,4" />
-                        
-                        <Button Content="AUTHENTICATE" 
-                                Command="{Binding AuthenticateCommand}" 
-                                Visibility="{Binding IsAuthRequired, Converter={StaticResource BoolToVis}}" 
-                                Background="{StaticResource PrimaryBrush}" 
-                                Foreground="#1E1E2E" 
-                                FontWeight="Bold" 
-                                Padding="10,4" 
-                                MinWidth="100"
-                                Margin="4,0,0,4" />
-                    </WrapPanel>
-                </Grid>
-            </Border>
-
-            <!-- 1. Server, Git & MCP Panels -->
-            <StackPanel Grid.Row="1" Margin="0,0,0,8">
-                <!-- 1a. Local Bridge Server Panel -->
-                <Border Background="{StaticResource CardBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="6" Padding="14,6" Margin="0,0,0,4">
-                    <Grid>
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*" />
-                            <ColumnDefinition Width="Auto" />
-                        </Grid.ColumnDefinitions>
-
-                        <WrapPanel Grid.Column="0" VerticalAlignment="Center">
-                            <TextBlock Text="LOCAL BRIDGE" FontWeight="Bold" Foreground="{StaticResource PrimaryBrush}" FontSize="12" VerticalAlignment="Center" Margin="0,0,12,4"/>
-                            <Border Background="#1E1E2E" Padding="6,2" CornerRadius="4" Margin="0,0,6,4">
-                                <StackPanel Orientation="Horizontal">
-                                    <TextBlock Text="Status: " Foreground="{StaticResource SubTextBrush}" FontSize="11"/>
-                                    <TextBlock Text="{Binding BridgeStatusText}" Foreground="{StaticResource AccentBrush}" FontWeight="Bold" FontSize="11" ToolTip="{Binding BridgeErrorMessage}"/>
-                                </StackPanel>
-                            </Border>
-                            <Border Background="#1E1E2E" Padding="6,2" CornerRadius="4" Margin="0,0,6,4">
-                                <StackPanel Orientation="Horizontal">
-                                    <TextBlock Text="Address: " Foreground="{StaticResource SubTextBrush}" FontSize="11"/>
-                                    <TextBlock Text="{Binding BridgeHostPortText}" Foreground="{StaticResource TextBrush}" FontWeight="SemiBold" FontSize="11"/>
-                                </StackPanel>
-                            </Border>
-                            <Border Background="#1E1E2E" Padding="6,2" CornerRadius="4" Margin="0,0,6,4">
-                                <StackPanel Orientation="Horizontal">
-                                    <TextBlock Text="Token: " Foreground="{StaticResource SubTextBrush}" FontSize="11"/>
-                                    <TextBlock Text="{Binding DisplayedApiTokenText}" Foreground="{StaticResource TextBrush}" FontFamily="Consolas" FontSize="11" VerticalAlignment="Center"/>
-                                </StackPanel>
-                            </Border>
-                        </WrapPanel>
-
-                        <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
-                            <Button Content="Show/Hide" Command="{Binding ToggleTokenMaskCommand}" Padding="8,3" MinWidth="75" Margin="0,0,4,0" FontSize="11"/>
-                            <Button Content="Copy Token" Command="{Binding CopyTokenCommand}" Padding="8,3" MinWidth="75" Margin="0,0,4,0" FontSize="11"/>
-                            <Button Content="Regenerate" Command="{Binding RegenerateTokenCommand}" Padding="8,3" MinWidth="75" Margin="0,0,8,0" FontSize="11"/>
-                            
-                            <Button Content="START" Command="{Binding StartBridgeCommand}" Visibility="{Binding IsBridgeStopped, Converter={StaticResource BoolToVis}}" Background="{StaticResource AccentBrush}" Foreground="#1E1E2E" FontWeight="Bold" Padding="12,3" MinWidth="75" Margin="0,0,4,0"/>
-                            <Button Content="STOP" Command="{Binding StopBridgeCommand}" Visibility="{Binding IsBridgeRunning, Converter={StaticResource BoolToVis}}" Background="#FF5555" Foreground="White" FontWeight="Bold" Padding="12,3" MinWidth="75"/>
-                        </StackPanel>
-                    </Grid>
-                </Border>
-
-                <!-- 1b. Git / GitHub Evidence Layer Panel -->
-                <Border Background="{StaticResource CardBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="6" Padding="14,6" Margin="0,0,0,4">
-                    <Grid>
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*" />
-                            <ColumnDefinition Width="Auto" />
-                        </Grid.ColumnDefinitions>
-
-                        <WrapPanel Grid.Column="0" VerticalAlignment="Center">
-                            <TextBlock Text="GIT / GITHUB" FontWeight="Bold" Foreground="{StaticResource PrimaryBrush}" FontSize="12" VerticalAlignment="Center" Margin="0,0,12,4"/>
-                            
-                            <Border Background="#1E1E2E" Padding="6,2" CornerRadius="4" Margin="0,0,6,4">
-                                <StackPanel Orientation="Horizontal">
-                                    <TextBlock Text="Git: " Foreground="{StaticResource SubTextBrush}" FontSize="11"/>
-                                    <TextBlock Text="{Binding GitStatusText}" Foreground="{StaticResource AccentBrush}" FontWeight="Bold" FontSize="11"/>
-                                </StackPanel>
-                            </Border>
-                            
-                            <Border Background="#1E1E2E" Padding="6,2" CornerRadius="4" Margin="0,0,6,4">
-                                <StackPanel Orientation="Horizontal">
-                                    <TextBlock Text="Ver: " Foreground="{StaticResource SubTextBrush}" FontSize="11"/>
-                                    <TextBlock Text="{Binding GitVersionText}" Foreground="{StaticResource TextBrush}" FontSize="11"/>
-                                </StackPanel>
-                            </Border>
-
-                            <Border Background="#1E1E2E" Padding="6,2" CornerRadius="4" Margin="0,0,6,4">
-                                <StackPanel Orientation="Horizontal">
-                                    <TextBlock Text="Repo: " Foreground="{StaticResource SubTextBrush}" FontSize="11"/>
-                                    <TextBlock Text="{Binding GitRepoText}" Foreground="{StaticResource TextBrush}" FontWeight="SemiBold" FontSize="11"/>
-                                </StackPanel>
-                            </Border>
-
-                            <Border Background="#1E1E2E" Padding="6,2" CornerRadius="4" Margin="0,0,6,4">
-                                <StackPanel Orientation="Horizontal">
-                                    <TextBlock Text="Branch: " Foreground="{StaticResource SubTextBrush}" FontSize="11"/>
-                                    <TextBlock Text="{Binding GitBranchText}" Foreground="{StaticResource TextBrush}" FontWeight="SemiBold" FontSize="11"/>
-                                </StackPanel>
-                            </Border>
-
-                            <Border Background="#1E1E2E" Padding="6,2" CornerRadius="4" Margin="0,0,6,4">
-                                <StackPanel Orientation="Horizontal">
-                                    <TextBlock Text="HEAD: " Foreground="{StaticResource SubTextBrush}" FontSize="11"/>
-                                    <TextBlock Text="{Binding GitHeadText}" Foreground="{StaticResource TextBrush}" FontFamily="Consolas" FontSize="11"/>
-                                </StackPanel>
-                            </Border>
-
-                            <Border Background="#1E1E2E" Padding="6,2" CornerRadius="4" Margin="0,0,6,4">
-                                <StackPanel Orientation="Horizontal">
-                                    <TextBlock Text="Tree: " Foreground="{StaticResource SubTextBrush}" FontSize="11"/>
-                                    <TextBlock Text="{Binding GitWorkingTreeText}" Foreground="{StaticResource TextBrush}" FontWeight="SemiBold" FontSize="11"/>
-                                </StackPanel>
-                            </Border>
-
-                            <Border Background="#1E1E2E" Padding="6,2" CornerRadius="4" Margin="0,0,6,4">
-                                <StackPanel Orientation="Horizontal">
-                                    <TextBlock Text="Push: " Foreground="{StaticResource SubTextBrush}" FontSize="11"/>
-                                    <TextBlock Text="{Binding GitPushStateText}" Foreground="{StaticResource AccentBrush}" FontWeight="SemiBold" FontSize="11"/>
-                                </StackPanel>
-                            </Border>
-                        </WrapPanel>
-
-                        <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
-                            <Button Content="REFRESH" Command="{Binding RefreshGitCommand}" Padding="10,3" MinWidth="75" Margin="0,0,6,0" FontSize="11"/>
-                            <Button Content="VIEW EVIDENCE" Command="{Binding ViewEvidenceCommand}" IsEnabled="{Binding HasEvidenceAvailable}" Padding="10,3" MinWidth="95" Margin="0,0,6,0" FontSize="11"/>
-                            <Button Content="PUSH" Command="{Binding PushGitCommand}" Background="{StaticResource PrimaryBrush}" Foreground="#1E1E2E" FontWeight="Bold" Padding="12,3" MinWidth="75" FontSize="11"/>
-                        </StackPanel>
-                    </Grid>
-                </Border>
-
-                <!-- 1c. MCP Server Panel -->
-                <Border Background="{StaticResource CardBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="6" Padding="14,6" Margin="0,0,0,4">
-                    <Grid>
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*" />
-                            <ColumnDefinition Width="Auto" />
-                        </Grid.ColumnDefinitions>
-
-                        <WrapPanel Grid.Column="0" VerticalAlignment="Center">
-                            <TextBlock Text="MCP SERVER" FontWeight="Bold" Foreground="{StaticResource PrimaryBrush}" FontSize="12" VerticalAlignment="Center" Margin="0,0,12,4"/>
-                            <Border Background="#1E1E2E" Padding="6,2" CornerRadius="4" Margin="0,0,6,4">
-                                <StackPanel Orientation="Horizontal">
-                                    <TextBlock Text="Status: " Foreground="{StaticResource SubTextBrush}" FontSize="11"/>
-                                    <TextBlock Text="{Binding McpStatusText}" Foreground="{StaticResource AccentBrush}" FontWeight="Bold" FontSize="11"/>
-                                </StackPanel>
-                            </Border>
-                            <Border Background="#1E1E2E" Padding="6,2" CornerRadius="4" Margin="0,0,6,4">
-                                <StackPanel Orientation="Horizontal">
-                                    <TextBlock Text="Endpoint: " Foreground="{StaticResource SubTextBrush}" FontSize="11"/>
-                                    <TextBlock Text="{Binding McpEndpointText}" Foreground="{StaticResource TextBrush}" FontWeight="SemiBold" FontSize="11"/>
-                                </StackPanel>
-                            </Border>
-                            <Border Background="#1E1E2E" Padding="6,2" CornerRadius="4" Margin="0,0,6,4">
-                                <StackPanel Orientation="Horizontal">
-                                    <TextBlock Text="Auth: " Foreground="{StaticResource SubTextBrush}" FontSize="11"/>
-                                    <TextBlock Text="{Binding McpAuthStatusText}" Foreground="{StaticResource TextBrush}" FontWeight="SemiBold" FontSize="11"/>
-                                </StackPanel>
-                            </Border>
-                            <Border Background="#1E1E2E" Padding="6,2" CornerRadius="4" Margin="0,0,6,4">
-                                <StackPanel Orientation="Horizontal">
-                                    <TextBlock Text="Activity: " Foreground="{StaticResource SubTextBrush}" FontSize="11"/>
-                                    <TextBlock Text="{Binding McpActivityText}" Foreground="{StaticResource SubTextBrush}" FontSize="11"/>
-                                </StackPanel>
-                            </Border>
-                        </WrapPanel>
-
-                        <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
-                            <Button Content="START MCP" Command="{Binding StartMcpCommand}" Background="{StaticResource AccentBrush}" Foreground="#1E1E2E" FontWeight="Bold" Padding="12,3" MinWidth="90" Margin="0,0,4,0"/>
-                            <Button Content="STOP MCP" Command="{Binding StopMcpCommand}" Background="#FF5555" Foreground="White" FontWeight="Bold" Padding="12,3" MinWidth="90"/>
-                        </StackPanel>
-                    </Grid>
-                </Border>
-            </StackPanel>
-
-            <!-- 2. AI Brain & Progress Panel -->
-            <Grid Grid.Row="2" Margin="0,0,0,8">
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="*" />
-                    <ColumnDefinition Width="12" />
-                    <ColumnDefinition Width="*" />
-                </Grid.ColumnDefinitions>
-
-                <!-- AI Brain Panel -->
-                <Border Grid.Column="0" Background="{StaticResource CardBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="6" Padding="12,8">
-                    <Grid>
-                        <Grid.RowDefinitions>
-                            <RowDefinition Height="Auto" />
-                            <RowDefinition Height="Auto" />
-                        </Grid.RowDefinitions>
-
-                        <WrapPanel Grid.Row="0" VerticalAlignment="Center" Margin="0,0,0,6">
-                            <TextBlock Text="DEFAULT BRAIN: ChatGPT Web (via MCP)" FontWeight="Bold" Foreground="{StaticResource PrimaryBrush}" FontSize="12" VerticalAlignment="Center" Margin="0,0,10,4"/>
-                            <TextBlock Text="Optional Internal Brain:" Foreground="{StaticResource SubTextBrush}" FontSize="11" VerticalAlignment="Center" Margin="0,0,4,4"/>
-                            <ComboBox ItemsSource="{Binding BrainProviders}"
-                                      SelectedItem="{Binding SelectedBrainProvider}"
-                                      DisplayMemberPath="DisplayName"
-                                      Width="110" FontSize="11" Margin="0,0,8,4" VerticalAlignment="Center"/>
-
-                            <Border Background="#1E1E2E" Padding="5,2" CornerRadius="4" Margin="0,0,6,4">
-                                <StackPanel Orientation="Horizontal">
-                                    <TextBlock Text="Model: " Foreground="{StaticResource SubTextBrush}" FontSize="11"/>
-                                    <TextBlock Text="{Binding BrainModelText}" Foreground="{StaticResource TextBrush}" FontSize="11"/>
-                                </StackPanel>
-                            </Border>
-
-                            <Border Background="#1E1E2E" Padding="5,2" CornerRadius="4" Margin="0,0,0,4">
-                                <StackPanel Orientation="Horizontal">
-                                    <TextBlock Text="Status: " Foreground="{StaticResource SubTextBrush}" FontSize="11"/>
-                                    <TextBlock Text="{Binding BrainStatusText}" Foreground="{StaticResource AccentBrush}" FontWeight="Bold" FontSize="11"/>
-                                </StackPanel>
-                            </Border>
-                        </WrapPanel>
-
-                        <Grid Grid.Row="1">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*" />
-                                <ColumnDefinition Width="Auto" />
-                            </Grid.ColumnDefinitions>
-
-                            <WrapPanel Grid.Column="0" VerticalAlignment="Center">
-                                <TextBlock Text="Last Req: " Foreground="{StaticResource SubTextBrush}" FontSize="11"/>
-                                <TextBlock Text="{Binding LastBrainRequestText}" Foreground="{StaticResource TextBrush}" FontWeight="SemiBold" FontSize="11" Margin="0,0,8,0"/>
-                                <TextBlock Text="Decision: " Foreground="{StaticResource SubTextBrush}" FontSize="11"/>
-                                <TextBlock Text="{Binding LastBrainDecisionText}" Foreground="{StaticResource AccentBrush}" FontWeight="Bold" FontSize="11" Margin="0,0,8,0"/>
-                                <TextBlock Text="Duration: " Foreground="{StaticResource SubTextBrush}" FontSize="11"/>
-                                <TextBlock Text="{Binding LastBrainDurationText}" Foreground="{StaticResource TextBrush}" FontSize="11"/>
-                            </WrapPanel>
-
-                            <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
-                                <Button Content="TEST BRAIN" Command="{Binding TestBrainCommand}" Background="{StaticResource AccentBrush}" Foreground="#1E1E2E" FontWeight="Bold" Padding="8,2" MinWidth="75" Margin="0,0,6,0" FontSize="11"/>
-                                <Button Content="VIEW LAST RESPONSE" Command="{Binding ViewLastBrainResponseCommand}" Padding="8,2" MinWidth="120" FontSize="11"/>
-                            </StackPanel>
-                        </Grid>
-                    </Grid>
-                </Border>
-
-                <!-- Progress Panel -->
-                <Border Grid.Column="2" Background="{StaticResource CardBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="6" Padding="12,8">
-                    <Grid>
-                        <Grid.RowDefinitions>
-                            <RowDefinition Height="Auto" />
-                            <RowDefinition Height="Auto" />
-                        </Grid.RowDefinitions>
-
-                        <!-- Project Progress -->
-                        <Grid Grid.Row="0" Margin="0,0,0,6">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="Auto" MinWidth="120" />
-                                <ColumnDefinition Width="*" />
-                                <ColumnDefinition Width="Auto" />
-                            </Grid.ColumnDefinitions>
-
-                            <TextBlock Grid.Column="0" Text="PROJECT PROGRESS" FontWeight="Bold" Foreground="{StaticResource PrimaryBrush}" FontSize="11" VerticalAlignment="Center" Margin="0,0,8,0"/>
-                            <ProgressBar Grid.Column="1" Value="{Binding ProjectPercent}" Minimum="0" Maximum="100" Height="14" Margin="0,0,8,0"/>
-                            <TextBlock Grid.Column="2" Text="{Binding ProjectProgressText}" Foreground="{StaticResource TextBrush}" FontSize="11" FontWeight="SemiBold" VerticalAlignment="Center"/>
-                        </Grid>
-
-                        <!-- Phase Progress -->
-                        <Grid Grid.Row="1">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="Auto" MinWidth="120" />
-                                <ColumnDefinition Width="*" />
-                                <ColumnDefinition Width="Auto" />
-                            </Grid.ColumnDefinitions>
-
-                            <TextBlock Grid.Column="0" Text="CURRENT PHASE" FontWeight="Bold" Foreground="{StaticResource PrimaryBrush}" FontSize="11" VerticalAlignment="Center" Margin="0,0,8,0"/>
-                            <ProgressBar Grid.Column="1" Value="{Binding PhasePercent}" Minimum="0" Maximum="100" Height="14" Margin="0,0,8,0"/>
-                            <TextBlock Grid.Column="2" Text="{Binding PhaseProgressText}" Foreground="{StaticResource SubTextBrush}" FontSize="10" VerticalAlignment="Center"/>
-                        </Grid>
-                    </Grid>
-                </Border>
+                </Button>
             </Grid>
+        </Border>
 
-            <!-- 3. Configurations (Antigravity & Workspace) -->
-            <Grid Grid.Row="3" Margin="0,0,0,12">
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="*" />
-                    <ColumnDefinition Width="12" />
-                    <ColumnDefinition Width="*" />
-                </Grid.ColumnDefinitions>
+        <!-- RIGHT CONTENT AREA -->
+        <ScrollViewer Grid.Column="1" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto">
+            <Grid Margin="24">
 
-                <!-- Antigravity Config -->
-                <Border Grid.Column="0" Background="{StaticResource CardBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="6" Padding="14">
+                <!-- ================================================== -->
+                <!-- 1. TRANG TỔNG QUAN (OVERVIEW PAGE) -->
+                <!-- ================================================== -->
+                <Grid Visibility="{Binding IsOverviewSelected, Converter={StaticResource BoolToVis}}">
                     <StackPanel>
-                        <Grid Margin="0,0,0,8">
-                            <TextBlock Text="ANTIGRAVITY AGENT CONFIGURATION" FontWeight="SemiBold" Foreground="{StaticResource PrimaryBrush}" FontSize="12"/>
-                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
-                                <TextBlock Text="Status: " Foreground="{StaticResource SubTextBrush}" FontSize="12"/>
-                                <TextBlock Text="{Binding AntigravityStatus}" FontWeight="Bold" FontSize="12" Foreground="{StaticResource TextBrush}"/>
-                            </StackPanel>
-                        </Grid>
-                        <Grid Margin="0,0,0,8">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*" />
-                                <ColumnDefinition Width="Auto" />
-                                <ColumnDefinition Width="Auto" />
-                            </Grid.ColumnDefinitions>
-                            <TextBox Grid.Column="0" Text="{Binding AntigravityPath, UpdateSourceTrigger=PropertyChanged}" ToolTip="Executable or agent path" Margin="0,0,6,0" Padding="4"/>
-                            <Button Grid.Column="1" Content="Browse" Command="{Binding BrowseAntigravityCommand}" Padding="10,4" MinWidth="65" Margin="0,0,6,0"/>
-                            <Button Grid.Column="2" Content="Test" Command="{Binding TestAntigravityCommand}" Padding="10,4" MinWidth="60"/>
-                        </Grid>
-                    </StackPanel>
-                </Border>
-
-                <!-- Workspace Config -->
-                <Border Grid.Column="2" Background="{StaticResource CardBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="6" Padding="14">
-                    <StackPanel>
-                        <Grid Margin="0,0,0,8">
-                            <TextBlock Text="TARGET WORKSPACE CONFIGURATION" FontWeight="SemiBold" Foreground="{StaticResource PrimaryBrush}" FontSize="12"/>
-                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
-                                <TextBlock Text="Status: " Foreground="{StaticResource SubTextBrush}" FontSize="12"/>
-                                <TextBlock Text="{Binding WorkspaceStatus}" FontWeight="Bold" FontSize="12" Foreground="{StaticResource TextBrush}"/>
-                            </StackPanel>
-                        </Grid>
-                        <Grid Margin="0,0,0,8">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*" />
-                                <ColumnDefinition Width="Auto" />
-                                <ColumnDefinition Width="Auto" />
-                            </Grid.ColumnDefinitions>
-                            <TextBox Grid.Column="0" Text="{Binding WorkspacePath, UpdateSourceTrigger=PropertyChanged}" ToolTip="Workspace directory path" Margin="0,0,6,0" Padding="4"/>
-                            <Button Grid.Column="1" Content="Browse Folder" Command="{Binding BrowseWorkspaceCommand}" Padding="10,4" MinWidth="90" Margin="0,0,6,0"/>
-                            <Button Grid.Column="2" Content="Validate" Command="{Binding ValidateWorkspaceCommand}" Padding="10,4" MinWidth="70"/>
-                        </Grid>
-                    </StackPanel>
-                </Border>
-            </Grid>
-
-            <!-- 4. Main Tabbed Workspace Area -->
-            <TabControl Grid.Row="4" Background="Transparent" BorderThickness="0" MinHeight="360">
-                <!-- TAB 1: AI PLANNING (PHASE 06) -->
-                <TabItem Header="PROJECT PLANNING (PHASE 06)" FontSize="12" FontWeight="Bold" Padding="14,6">
-                    <Grid Margin="0,10,0,0">
-                        <Grid.RowDefinitions>
-                            <RowDefinition Height="Auto" />
-                            <RowDefinition Height="Auto" />
-                            <RowDefinition Height="*" MinHeight="260"/>
-                        </Grid.RowDefinitions>
-
-                        <!-- Planning Input Controls -->
-                        <Border Grid.Row="0" Background="{StaticResource CardBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="6" Padding="12" Margin="0,0,0,8">
+                        <!-- Header -->
+                        <Border Background="{StaticResource CardBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="8" Padding="20,16" Margin="0,0,0,16">
                             <Grid>
                                 <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="2*" />
-                                    <ColumnDefinition Width="5*" />
-                                    <ColumnDefinition Width="Auto" />
-                                </Grid.ColumnDefinitions>
-
-                                <StackPanel Grid.Column="0" Margin="0,0,10,0">
-                                    <TextBlock Text="PROJECT NAME" FontWeight="SemiBold" Foreground="{StaticResource SubTextBrush}" FontSize="11" Margin="0,0,0,4"/>
-                                    <TextBox Text="{Binding PlanningProjectNameText, UpdateSourceTrigger=PropertyChanged}" Padding="6"/>
-                                </StackPanel>
-
-                                <StackPanel Grid.Column="1" Margin="0,0,10,0">
-                                    <TextBlock Text="USER IDEA / PROJECT REQUIREMENT" FontWeight="SemiBold" Foreground="{StaticResource SubTextBrush}" FontSize="11" Margin="0,0,0,4"/>
-                                    <TextBox Text="{Binding PlanningIdeaText, UpdateSourceTrigger=PropertyChanged}" Padding="6" ToolTip="Enter high-level user idea or application requirement..."/>
-                                </StackPanel>
-
-                                <Button Grid.Column="2" Content="GENERATE PLAN" Command="{Binding GeneratePlanCommand}" IsEnabled="{Binding IsPlanningInProgress, Converter={StaticResource InverseBool}}" Background="{StaticResource PrimaryBrush}" Foreground="#1E1E2E" FontWeight="Bold" Padding="16,0" VerticalAlignment="Bottom" Height="32" MinWidth="130"/>
-                            </Grid>
-                        </Border>
-
-                        <!-- Plan Header & Action Controls -->
-                        <Border Grid.Row="1" Background="{StaticResource CardBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="6" Padding="12,8" Margin="0,0,0,8">
-                            <Grid>
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="Auto" />
                                     <ColumnDefinition Width="*" />
                                     <ColumnDefinition Width="Auto" />
                                 </Grid.ColumnDefinitions>
 
-                                <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
-                                    <TextBlock Text="PLAN VERSION:" FontWeight="Bold" Foreground="{StaticResource SubTextBrush}" FontSize="11" VerticalAlignment="Center" Margin="0,0,6,0"/>
-                                    <TextBlock Text="{Binding PlanVersionDisplay}" FontWeight="Bold" Foreground="{StaticResource PrimaryBrush}" FontSize="12" VerticalAlignment="Center" Margin="0,0,16,0"/>
-
-                                    <TextBlock Text="STATUS:" FontWeight="Bold" Foreground="{StaticResource SubTextBrush}" FontSize="11" VerticalAlignment="Center" Margin="0,0,6,0"/>
-                                    <TextBlock Text="{Binding PlanningStatusText}" FontWeight="SemiBold" Foreground="{StaticResource AccentBrush}" FontSize="11" VerticalAlignment="Center"/>
+                                <StackPanel Grid.Column="0">
+                                    <TextBlock Text="AIBridge" FontSize="24" FontWeight="Bold" Foreground="{StaticResource PrimaryBrush}" />
+                                    <TextBlock Text="Trợ lý điều phối phát triển phần mềm" FontSize="13" Foreground="{StaticResource SubTextBrush}" Margin="0,4,0,0" />
                                 </StackPanel>
 
-                                <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
-                                    <Button Content="REVISE WITH AI" Command="{Binding RevisePlanCommand}" IsEnabled="{Binding HasPlanAvailable}" Padding="10,4" MinWidth="110" Margin="0,0,8,0" FontSize="11"/>
-                                    <Button Content="APPROVE PLAN" Command="{Binding ApprovePlanCommand}" IsEnabled="{Binding IsPlanApprovable}" Background="{StaticResource AccentBrush}" Foreground="#1E1E2E" FontWeight="Bold" Padding="14,4" MinWidth="120" FontSize="11"/>
+                                <Border Grid.Column="1" Background="#1E1E2E" Padding="14,8" CornerRadius="6" VerticalAlignment="Center">
+                                    <TextBlock Text="{Binding SystemStatusText}" FontSize="15" FontWeight="Bold" Foreground="{Binding SystemStatusColor}" />
+                                </Border>
+                            </Grid>
+                        </Border>
+
+                        <!-- 4 Status Cards -->
+                        <UniformGrid Columns="4" Margin="0,0,0,16">
+                            <!-- ChatGPT Card -->
+                            <Border Background="{StaticResource CardBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="6" Padding="16,12" Margin="0,0,8,0">
+                                <StackPanel>
+                                    <TextBlock Text="CHATGPT" FontSize="11" FontWeight="Bold" Foreground="{StaticResource SubTextBrush}" />
+                                    <TextBlock Text="{Binding ChatGptStatusVietnamese}" FontSize="16" FontWeight="Bold" Foreground="{StaticResource AccentBrush}" Margin="0,6,0,0" />
+                                </StackPanel>
+                            </Border>
+
+                            <!-- Antigravity Card -->
+                            <Border Background="{StaticResource CardBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="6" Padding="16,12" Margin="4,0,4,0">
+                                <StackPanel>
+                                    <TextBlock Text="ANTIGRAVITY" FontSize="11" FontWeight="Bold" Foreground="{StaticResource SubTextBrush}" />
+                                    <TextBlock Text="{Binding AntigravityStatusVietnamese}" FontSize="16" FontWeight="Bold" Foreground="{StaticResource AccentBrush}" Margin="0,6,0,0" />
+                                </StackPanel>
+                            </Border>
+
+                            <!-- Git Card -->
+                            <Border Background="{StaticResource CardBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="6" Padding="16,12" Margin="4,0,4,0">
+                                <StackPanel>
+                                    <TextBlock Text="GIT" FontSize="11" FontWeight="Bold" Foreground="{StaticResource SubTextBrush}" />
+                                    <TextBlock Text="{Binding GitStatusVietnamese}" FontSize="16" FontWeight="Bold" Foreground="{StaticResource TextBrush}" Margin="0,6,0,0" />
+                                </StackPanel>
+                            </Border>
+
+                            <!-- Project Card -->
+                            <Border Background="{StaticResource CardBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="6" Padding="16,12" Margin="8,0,0,0">
+                                <StackPanel>
+                                    <TextBlock Text="DỰ ÁN" FontSize="11" FontWeight="Bold" Foreground="{StaticResource SubTextBrush}" />
+                                    <TextBlock Text="{Binding ProjectNameDisplay}" FontSize="15" FontWeight="Bold" Foreground="{StaticResource PrimaryBrush}" Margin="0,6,0,0" TextTrimming="CharacterEllipsis" />
+                                </StackPanel>
+                            </Border>
+                        </UniformGrid>
+
+                        <!-- Progress Bars Card -->
+                        <Border Background="{StaticResource CardBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="8" Padding="20,16" Margin="0,0,0,16">
+                            <StackPanel>
+                                <TextBlock Text="TIẾN ĐỘ DỰ ÁN" FontSize="12" FontWeight="Bold" Foreground="{StaticResource PrimaryBrush}" Margin="0,0,0,8" />
+                                <ProgressBar Value="{Binding ProjectPercent}" Height="12" Foreground="{StaticResource AccentBrush}" Background="#1E1E2E" Margin="0,0,0,6" />
+                                <TextBlock Text="{Binding ProjectProgressText}" FontSize="12" Foreground="{StaticResource SubTextBrush}" Margin="0,0,0,16" />
+
+                                <TextBlock Text="TIẾN ĐỘ GIAI ĐOẠN" FontSize="12" FontWeight="Bold" Foreground="{StaticResource PrimaryBrush}" Margin="0,0,0,8" />
+                                <ProgressBar Value="{Binding PhasePercent}" Height="12" Foreground="{StaticResource PrimaryBrush}" Background="#1E1E2E" Margin="0,0,0,6" />
+                                <TextBlock Text="{Binding PhaseProgressText}" FontSize="12" Foreground="{StaticResource SubTextBrush}" />
+                            </StackPanel>
+                        </Border>
+
+                        <!-- PROMINENT NEXT ACTION CARD -->
+                        <Border Background="#2B2D42" BorderBrush="{StaticResource AccentBrush}" BorderThickness="2" CornerRadius="8" Padding="24,20">
+                            <StackPanel>
+                                <TextBlock Text="VIỆC CẦN LÀM TIẾP THEO" FontSize="12" FontWeight="Bold" Foreground="{StaticResource WarningBrush}" Margin="0,0,0,8" />
+                                <TextBlock Text="{Binding NextActionText}" FontSize="20" FontWeight="Bold" Foreground="{StaticResource TextBrush}" Margin="0,0,0,14" />
+
+                                <WrapPanel>
+                                    <Button Content="Chuyển đến Dự án" Command="{Binding NavigateCommand}" CommandParameter="Project" 
+                                            Visibility="{Binding IsProjectSelected, Converter={StaticResource InverseBool}}"
+                                            Background="{StaticResource PrimaryBrush}" Foreground="#1E1E2E" FontWeight="Bold" Padding="14,8" Margin="0,0,10,0" />
+                                    <Button Content="Chuyển đến Thực thi" Command="{Binding NavigateCommand}" CommandParameter="Execution" 
+                                            Background="{StaticResource AccentBrush}" Foreground="#1E1E2E" FontWeight="Bold" Padding="14,8" Margin="0,0,10,0" />
+                                    <Button Content="Bật kết nối ChatGPT" Command="{Binding StartMcpCommand}" 
+                                            Visibility="{Binding IsMcpRunning, Converter={StaticResource InverseBool}}"
+                                            Background="{StaticResource AccentBrush}" Foreground="#1E1E2E" FontWeight="Bold" Padding="14,8" />
+                                </WrapPanel>
+                            </StackPanel>
+                        </Border>
+                    </StackPanel>
+                </Grid>
+
+                <!-- ================================================== -->
+                <!-- 2. TRANG DỰ ÁN (PROJECT PAGE) -->
+                <!-- ================================================== -->
+                <Grid Visibility="{Binding IsProjectSelected, Converter={StaticResource BoolToVis}}">
+                    <StackPanel>
+                        <TextBlock Text="DỰ ÁN" FontSize="20" FontWeight="Bold" Foreground="{StaticResource PrimaryBrush}" Margin="0,0,0,16" />
+
+                        <!-- Project Details Info Card -->
+                        <Border Background="{StaticResource CardBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="8" Padding="20,16" Margin="0,0,0,16">
+                            <Grid>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                </Grid.RowDefinitions>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="120" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+
+                                <!-- Tên dự án -->
+                                <TextBlock Grid.Row="0" Grid.Column="0" Text="Tên dự án:" VerticalAlignment="Center" Foreground="{StaticResource SubTextBrush}" Margin="0,0,0,10" />
+                                <TextBox Grid.Row="0" Grid.Column="1" Grid.ColumnSpan="2" Text="{Binding PlanningProjectNameText, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,0,10" />
+
+                                <!-- Mô tả / Yêu cầu -->
+                                <TextBlock Grid.Row="1" Grid.Column="0" Text="Mô tả / Yêu cầu:" VerticalAlignment="Top" Foreground="{StaticResource SubTextBrush}" Margin="0,4,0,10" />
+                                <TextBox Grid.Row="1" Grid.Column="1" Grid.ColumnSpan="2" Text="{Binding PlanningIdeaText, UpdateSourceTrigger=PropertyChanged}" AcceptsReturn="True" TextWrapping="Wrap" MinHeight="60" Margin="0,0,0,10" />
+
+                                <!-- Thư mục dự án -->
+                                <TextBlock Grid.Row="2" Grid.Column="0" Text="Thư mục dự án:" VerticalAlignment="Center" Foreground="{StaticResource SubTextBrush}" />
+                                <TextBox Grid.Row="2" Grid.Column="1" Text="{Binding WorkspacePath, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,10,0" />
+                                <StackPanel Grid.Row="2" Grid.Column="2" Orientation="Horizontal">
+                                    <Button Content="Chọn thư mục" Command="{Binding BrowseWorkspaceCommand}" Padding="12,6" Margin="0,0,10,0" />
+                                    <Border Background="#1E1E2E" Padding="10,6" CornerRadius="4">
+                                        <TextBlock Text="{Binding WorkspaceStatusVietnamese}" FontSize="12" FontWeight="SemiBold" Foreground="{StaticResource AccentBrush}" />
+                                    </Border>
                                 </StackPanel>
                             </Grid>
                         </Border>
 
-                        <!-- Plan Tree & Details Split View -->
-                        <Grid Grid.Row="2">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="5*" />
-                                <ColumnDefinition Width="10" />
-                                <ColumnDefinition Width="5*" />
-                            </Grid.ColumnDefinitions>
-
-                            <!-- Left: Hierarchical Plan Tree -->
-                            <Border Grid.Column="0" Background="{StaticResource InputBgBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="6" Padding="8">
-                                <Grid>
-                                    <Grid.RowDefinitions>
-                                        <RowDefinition Height="Auto"/>
-                                        <RowDefinition Height="*"/>
-                                    </Grid.RowDefinitions>
-                                    <TextBlock Grid.Row="0" Text="PROJECT PLAN TREE (PHASES &amp; TASKS)" FontWeight="Bold" Foreground="{StaticResource SubTextBrush}" FontSize="11" Margin="0,0,0,6"/>
-                                    <TreeView Grid.Row="1" ItemsSource="{Binding CurrentProjectPlan.Phases}" 
-                                              SelectedItemChanged="TreeView_SelectedItemChanged"
-                                              Background="Transparent" BorderThickness="0">
-                                        <TreeView.ItemTemplate>
-                                            <HierarchicalDataTemplate ItemsSource="{Binding Tasks}">
-                                                <StackPanel Orientation="Horizontal" Margin="0,2">
-                                                    <TextBlock Text="{Binding PhaseId}" Foreground="{StaticResource AccentBrush}" FontWeight="Bold" Margin="0,0,6,0"/>
-                                                    <TextBlock Text="{Binding Name}" Foreground="{StaticResource TextBrush}" FontWeight="Bold"/>
-                                                </StackPanel>
-                                                <HierarchicalDataTemplate.ItemTemplate>
-                                                    <DataTemplate>
-                                                        <StackPanel Orientation="Horizontal" Margin="0,2">
-                                                            <TextBlock Text="{Binding TaskId}" Foreground="{StaticResource SubTextBrush}" FontFamily="Consolas" Margin="0,0,8,0"/>
-                                                            <TextBlock Text="{Binding Title}" Foreground="{StaticResource TextBrush}" Margin="0,0,8,0"/>
-                                                            <TextBlock Text="[" Foreground="{StaticResource SubTextBrush}"/>
-                                                            <TextBlock Text="{Binding Status}" Foreground="{StaticResource PrimaryBrush}" FontWeight="SemiBold"/>
-                                                            <TextBlock Text="]" Foreground="{StaticResource SubTextBrush}"/>
-                                                        </StackPanel>
-                                                    </DataTemplate>
-                                                </HierarchicalDataTemplate.ItemTemplate>
-                                            </HierarchicalDataTemplate>
-                                        </TreeView.ItemTemplate>
-                                    </TreeView>
+                        <!-- Project Plan Section -->
+                        <Border Background="{StaticResource CardBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="8" Padding="20,16">
+                            <StackPanel>
+                                <Grid Margin="0,0,0,12">
+                                    <TextBlock Text="KẾ HOẠCH DỰ ÁN" FontSize="14" FontWeight="Bold" Foreground="{StaticResource PrimaryBrush}" VerticalAlignment="Center" />
+                                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                                        <Button Content="Tạo kế hoạch" Command="{Binding GeneratePlanCommand}" Background="{StaticResource PrimaryBrush}" Foreground="#1E1E2E" FontWeight="Bold" Margin="0,0,8,0" />
+                                        <Button Content="Phê duyệt kế hoạch" Command="{Binding ApprovePlanCommand}" Visibility="{Binding IsPlanApprovable, Converter={StaticResource BoolToVis}}" Background="{StaticResource AccentBrush}" Foreground="#1E1E2E" FontWeight="Bold" Margin="0,0,8,0" />
+                                        <Button Content="Yêu cầu chỉnh sửa" Command="{Binding RevisePlanCommand}" Visibility="{Binding HasPlanAvailable, Converter={StaticResource BoolToVis}}" Margin="0,0,0,0" />
+                                    </StackPanel>
                                 </Grid>
-                            </Border>
 
-                            <!-- Right: Selected Node Details -->
-                            <Border Grid.Column="2" Background="{StaticResource InputBgBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="6" Padding="12">
-                                <Grid>
-                                    <Grid.RowDefinitions>
-                                        <RowDefinition Height="Auto"/>
-                                        <RowDefinition Height="*"/>
-                                        <RowDefinition Height="Auto"/>
-                                    </Grid.RowDefinitions>
-                                    <TextBlock Grid.Row="0" Text="PLAN ITEM DETAILS" FontWeight="Bold" Foreground="{StaticResource SubTextBrush}" FontSize="11" Margin="0,0,0,6"/>
-                                    <TextBox Grid.Row="1" Text="{Binding SelectedNodeDetailsText}" IsReadOnly="True" AcceptsReturn="True" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto" Background="Transparent" Foreground="{StaticResource TextBrush}" BorderThickness="0" FontFamily="Consolas" FontSize="11"/>
-                                    <Button Grid.Row="2" Content="APPROVE EXECUTION (HUMAN GATE)" Command="{Binding ApproveExecutionCommand}" Background="{StaticResource AccentBrush}" Foreground="#1E1E2E" FontWeight="Bold" Padding="10,6" Margin="0,6,0,0"/>
+                                <Grid MinHeight="300">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="280" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+
+                                    <!-- Plan Tree View -->
+                                    <Border Grid.Column="0" Background="#1E1E2E" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="6" Padding="8" Margin="0,0,12,0">
+                                        <TreeView ItemsSource="{Binding CurrentProjectPlan.Phases}">
+                                            <TreeView.ItemTemplate>
+                                                <HierarchicalDataTemplate ItemsSource="{Binding Tasks}">
+                                                    <TextBlock Text="{Binding Name}" FontWeight="Bold" Foreground="{StaticResource TextBrush}" Margin="2,4" />
+                                                    <HierarchicalDataTemplate.ItemTemplate>
+                                                        <DataTemplate>
+                                                            <TextBlock Text="{Binding Title}" Foreground="{StaticResource SubTextBrush}" Margin="2,2" />
+                                                        </DataTemplate>
+                                                    </HierarchicalDataTemplate.ItemTemplate>
+                                                </HierarchicalDataTemplate>
+                                            </TreeView.ItemTemplate>
+                                        </TreeView>
+                                    </Border>
+
+                                    <!-- Right Detail Panel -->
+                                    <Border Grid.Column="1" Background="#1E1E2E" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="6" Padding="16">
+                                        <StackPanel>
+                                            <TextBlock Text="CHI TIẾT CÔNG VIỆC" FontSize="13" FontWeight="Bold" Foreground="{StaticResource PrimaryBrush}" Margin="0,0,0,10" />
+                                            <ScrollViewer MaxHeight="260" VerticalScrollBarVisibility="Auto">
+                                                <TextBlock Text="{Binding SelectedNodeDetailsText}" TextWrapping="Wrap" FontFamily="Consolas" FontSize="12" Foreground="{StaticResource TextBrush}" />
+                                            </ScrollViewer>
+                                        </StackPanel>
+                                    </Border>
                                 </Grid>
-                            </Border>
-                        </Grid>
-                    </Grid>
-                </TabItem>
+                            </StackPanel>
+                        </Border>
+                    </StackPanel>
+                </Grid>
 
-                <!-- TAB 2: TASK EXECUTION & LOGS (PHASES 01-05) -->
-                <TabItem Header="TASK EXECUTION &amp; LOGS" FontSize="12" FontWeight="Bold" Padding="14,6">
-                    <Grid Margin="0,10,0,0">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="6*" />
-                            <ColumnDefinition Width="12" />
-                            <ColumnDefinition Width="4*" />
-                        </Grid.ColumnDefinitions>
+                <!-- ================================================== -->
+                <!-- 3. TRANG THỰC THI (EXECUTION PAGE) -->
+                <!-- ================================================== -->
+                <Grid Visibility="{Binding IsExecutionSelected, Converter={StaticResource BoolToVis}}">
+                    <StackPanel>
+                        <TextBlock Text="THỰC THI CÔNG VIỆC" FontSize="20" FontWeight="Bold" Foreground="{StaticResource PrimaryBrush}" Margin="0,0,0,16" />
 
-                        <!-- Left Column: Prompt & Actions -->
-                        <Grid Grid.Column="0">
-                            <Grid.RowDefinitions>
-                                <RowDefinition Height="Auto" />
-                                <RowDefinition Height="*" MinHeight="180"/>
-                                <RowDefinition Height="Auto" />
-                            </Grid.RowDefinitions>
+                        <!-- Current Task Card -->
+                        <Border Background="{StaticResource CardBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="8" Padding="20,16" Margin="0,0,0,16">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
 
-                            <TextBlock Grid.Row="0" Text="PROMPT SPECIFICATION" FontWeight="SemiBold" Foreground="{StaticResource SubTextBrush}" Margin="0,0,0,6"/>
-                            
-                            <TextBox Grid.Row="1" 
-                                     Text="{Binding PromptText, UpdateSourceTrigger=PropertyChanged}"
-                                     AcceptsReturn="True" 
-                                     TextWrapping="Wrap" 
-                                     VerticalScrollBarVisibility="Auto"
-                                     Padding="10"
-                                     Margin="0,0,0,10"
-                                     ToolTip="Enter prompt instructions for coding agent..."/>
+                                <StackPanel Grid.Column="0">
+                                    <TextBlock Text="CÔNG VIỆC HIỆN TẠI" FontSize="11" FontWeight="Bold" Foreground="{StaticResource SubTextBrush}" />
+                                    <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
+                                        <TextBlock Text="Mã công việc: " Foreground="{StaticResource SubTextBrush}" />
+                                        <TextBlock Text="{Binding CurrentTaskId}" FontWeight="Bold" Foreground="{StaticResource TextBrush}" Margin="0,0,16,0" />
+                                        <TextBlock Text="Trạng thái: " Foreground="{StaticResource SubTextBrush}" />
+                                        <TextBlock Text="{Binding ExecutionStatusDisplay}" FontWeight="Bold" Foreground="{StaticResource AccentBrush}" />
+                                    </StackPanel>
+                                </StackPanel>
 
-                            <!-- Action Buttons -->
-                            <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right">
-                                <Button Content="HỦY" Command="{Binding CancelTaskCommand}" Background="#FF5555" Foreground="White" Width="100" Margin="0,0,10,0" Padding="8,4"/>
-                                <Button Content="GIAO VIỆC" Command="{Binding SubmitTaskCommand}" Background="{StaticResource AccentBrush}" Foreground="#1E1E2E" FontWeight="Bold" Width="130" Padding="8,4"/>
+                                <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                                    <Button Content="Chuẩn bị Prompt" Command="{Binding GeneratePromptCommand}" Margin="0,0,8,0" />
+                                    <Button Content="Gửi Antigravity" Command="{Binding DispatchTaskCommand}" Background="{StaticResource PrimaryBrush}" Foreground="#1E1E2E" FontWeight="Bold" Margin="0,0,8,0" />
+                                    <Button Content="Hủy bỏ" Command="{Binding CancelExecutionCommand}" Visibility="{Binding IsTaskRunning, Converter={StaticResource BoolToVis}}" Background="{StaticResource ErrorBrush}" Foreground="White" />
+                                </StackPanel>
+                            </Grid>
+                        </Border>
+
+                        <!-- Prompt Preview Section -->
+                        <Border Background="{StaticResource CardBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="8" Padding="20,16" Margin="0,0,0,16">
+                            <StackPanel>
+                                <TextBlock Text="NỘI DUNG GỬI ANTIGRAVITY" FontSize="13" FontWeight="Bold" Foreground="{StaticResource PrimaryBrush}" Margin="0,0,0,8" />
+                                <TextBox Text="{Binding PromptPreviewText}" IsReadOnly="True" AcceptsReturn="True" TextWrapping="Wrap" MinHeight="100" MaxHeight="180" FontFamily="Consolas" FontSize="12" />
+                            </StackPanel>
+                        </Border>
+
+                        <!-- Human Approval Section -->
+                        <Border Background="#2C243B" BorderBrush="{StaticResource WarningBrush}" BorderThickness="1" CornerRadius="8" Padding="20,16" Margin="0,0,0,16"
+                                Visibility="{Binding IsHumanApprovalRequired, Converter={StaticResource BoolToVis}}">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+
+                                <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                                    <TextBlock Text="QUYỀN THỰC THI" FontSize="12" FontWeight="Bold" Foreground="{StaticResource WarningBrush}" />
+                                    <TextBlock Text="⚠ Công việc này cần sự cho phép của bạn trước khi chạy." FontSize="14" FontWeight="SemiBold" Foreground="{StaticResource TextBrush}" Margin="0,4,0,0" />
+                                </StackPanel>
+
+                                <Button Grid.Column="1" Content="CHO PHÉP THỰC THI" Command="{Binding ApproveExecutionCommand}" 
+                                        Background="{StaticResource AccentBrush}" Foreground="#1E1E2E" FontWeight="Bold" FontSize="14" Padding="20,10" VerticalAlignment="Center" />
+                            </Grid>
+                        </Border>
+
+                        <!-- Git Changes Evidence Section -->
+                        <Border Background="{StaticResource CardBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="8" Padding="20,16">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+
+                                <StackPanel Grid.Column="0">
+                                    <TextBlock Text="THAY ĐỔI GIT BẰNG CHỨNG" FontSize="13" FontWeight="Bold" Foreground="{StaticResource PrimaryBrush}" Margin="0,0,0,6" />
+                                    <StackPanel Orientation="Horizontal">
+                                        <TextBlock Text="Commit: " Foreground="{StaticResource SubTextBrush}" />
+                                        <TextBlock Text="{Binding LastTaskCommitText}" FontWeight="Bold" Foreground="{StaticResource TextBrush}" Margin="0,0,16,0" />
+                                        <TextBlock Text="File thay đổi: " Foreground="{StaticResource SubTextBrush}" />
+                                        <TextBlock Text="{Binding LastTaskChangedFilesText}" FontWeight="Bold" Foreground="{StaticResource TextBrush}" />
+                                    </StackPanel>
+                                </StackPanel>
+
+                                <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                                    <Button Content="Xem bằng chứng Git" Command="{Binding ViewEvidenceCommand}" Margin="0,0,8,0" />
+                                    <Button Content="Đẩy Git lên Remote" Command="{Binding PushGitCommand}" Background="{StaticResource AccentBrush}" Foreground="#1E1E2E" FontWeight="Bold" />
+                                </StackPanel>
+                            </Grid>
+                        </Border>
+                    </StackPanel>
+                </Grid>
+
+                <!-- ================================================== -->
+                <!-- 4. TRANG KẾT NỐI (CONNECTION PAGE) -->
+                <!-- ================================================== -->
+                <Grid Visibility="{Binding IsConnectionSelected, Converter={StaticResource BoolToVis}}">
+                    <StackPanel>
+                        <TextBlock Text="KẾT NỐI CHATGPT" FontSize="20" FontWeight="Bold" Foreground="{StaticResource PrimaryBrush}" Margin="0,0,0,16" />
+
+                        <!-- Primary Card: ChatGPT Web -->
+                        <Border Background="{StaticResource CardBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="8" Padding="24,20" Margin="0,0,0,16">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+
+                                <StackPanel Grid.Column="0">
+                                    <TextBlock Text="ChatGPT Web (MCP Connection)" FontSize="16" FontWeight="Bold" Foreground="{StaticResource TextBrush}" />
+                                    <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
+                                        <TextBlock Text="Trạng thái: " Foreground="{StaticResource SubTextBrush}" FontSize="14" />
+                                        <TextBlock Text="{Binding ChatGptStatusVietnamese}" FontSize="14" FontWeight="Bold" Foreground="{StaticResource AccentBrush}" />
+                                    </StackPanel>
+                                </StackPanel>
+
+                                <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                                    <Button Content="BẬT KẾT NỐI" Command="{Binding StartMcpCommand}" Visibility="{Binding IsMcpRunning, Converter={StaticResource InverseBool}}" 
+                                            Background="{StaticResource AccentBrush}" Foreground="#1E1E2E" FontWeight="Bold" FontSize="14" Padding="18,8" />
+                                    <Button Content="NGẮT KẾT NỐI" Command="{Binding StopMcpCommand}" Visibility="{Binding IsMcpRunning, Converter={StaticResource BoolToVis}}" 
+                                            Background="{StaticResource ErrorBrush}" Foreground="White" FontWeight="Bold" FontSize="14" Padding="18,8" />
+                                </StackPanel>
+                            </Grid>
+                        </Border>
+
+                        <Border Background="{StaticResource CardBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="8" Padding="16">
+                            <Expander Header="THÔNG TIN KỸ THUẬT (NÂNG CAO)" Background="{StaticResource CardBrush}" Foreground="{StaticResource SubTextBrush}" FontWeight="Bold">
+                            <StackPanel Margin="0,12,0,0">
+                                <Grid Margin="0,0,0,8">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="150" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" Text="Địa chỉ MCP Endpoint:" Foreground="{StaticResource SubTextBrush}" VerticalAlignment="Center" />
+                                    <TextBox Grid.Column="1" Text="{Binding McpEndpointText}" IsReadOnly="True" />
+                                </Grid>
+
+                                <Grid Margin="0,0,0,8">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="150" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" Text="Local Bridge Server:" Foreground="{StaticResource SubTextBrush}" VerticalAlignment="Center" />
+                                    <TextBox Grid.Column="1" Text="{Binding BridgeHostPortText}" IsReadOnly="True" />
+                                </Grid>
+
+                                <Grid Margin="0,0,0,12">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="150" />
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" Text="Mã Token xác thực:" Foreground="{StaticResource SubTextBrush}" VerticalAlignment="Center" />
+                                    <TextBox Grid.Column="1" Text="{Binding DisplayedApiTokenText}" IsReadOnly="True" Margin="0,0,8,0" />
+                                    <WrapPanel Grid.Column="2">
+                                        <Button Content="Ẩn/Hiện" Command="{Binding ToggleTokenMaskCommand}" Padding="8,4" Margin="0,0,4,0" />
+                                        <Button Content="Sao chép Token" Command="{Binding CopyTokenCommand}" Padding="8,4" Margin="0,0,4,0" />
+                                        <Button Content="Tạo Token mới" Command="{Binding RegenerateTokenCommand}" Padding="8,4" />
+                                    </WrapPanel>
+                                </Grid>
+                            </StackPanel>
+                        </Expander>
+                        </Border>
+                    </StackPanel>
+                </Grid>
+
+                <!-- ================================================== -->
+                <!-- 5. TRANG NHẬT KÝ (LOGS PAGE) -->
+                <!-- ================================================== -->
+                <Grid Visibility="{Binding IsLogsSelected, Converter={StaticResource BoolToVis}}">
+                    <StackPanel>
+                        <Grid Margin="0,0,0,16">
+                            <TextBlock Text="NHẬT KÝ HOẠT ĐỘNG" FontSize="20" FontWeight="Bold" Foreground="{StaticResource PrimaryBrush}" VerticalAlignment="Center" />
+                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                                <Button Content="Sao chép nhật ký" Command="{Binding CopyLogsCommand}" Margin="0,0,8,0" />
+                                <Button Content="Xóa hiển thị" Command="{Binding ClearLogViewCommand}" />
                             </StackPanel>
                         </Grid>
 
-                        <!-- Right Column: Current Task & Logs -->
-                        <Grid Grid.Column="2">
-                            <Grid.RowDefinitions>
-                                <RowDefinition Height="Auto" />
-                                <RowDefinition Height="Auto" />
-                                <RowDefinition Height="*" MinHeight="180"/>
-                            </Grid.RowDefinitions>
-
-                            <!-- Current Task Info -->
-                            <Border Grid.Row="0" Background="{StaticResource CardBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="6" Padding="12" Margin="0,0,0,10">
-                                <StackPanel>
-                                    <TextBlock Text="CURRENT TASK" FontWeight="SemiBold" Foreground="{StaticResource PrimaryBrush}" FontSize="12" Margin="0,0,0,8"/>
-                                    
-                                    <Grid Margin="0,2">
-                                        <TextBlock Text="Task ID:" Foreground="{StaticResource SubTextBrush}" FontSize="12"/>
-                                        <TextBlock Text="{Binding CurrentTaskId}" HorizontalAlignment="Right" FontSize="12" FontFamily="Consolas"/>
-                                    </Grid>
-                                    
-                                    <Grid Margin="0,2">
-                                        <TextBlock Text="Status:" Foreground="{StaticResource SubTextBrush}" FontSize="12"/>
-                                        <TextBlock Text="{Binding CurrentTaskStatusText}" HorizontalAlignment="Right" FontWeight="SemiBold" FontSize="12"/>
-                                    </Grid>
-
-                                    <Grid Margin="0,2">
-                                        <TextBlock Text="Started:" Foreground="{StaticResource SubTextBrush}" FontSize="12"/>
-                                        <TextBlock Text="{Binding CurrentTaskStarted}" HorizontalAlignment="Right" FontSize="12"/>
-                                    </Grid>
-
-                                    <Grid Margin="0,2">
-                                        <TextBlock Text="Completed:" Foreground="{StaticResource SubTextBrush}" FontSize="12"/>
-                                        <TextBlock Text="{Binding CurrentTaskCompleted}" HorizontalAlignment="Right" FontSize="12"/>
-                                    </Grid>
-                                </StackPanel>
-                            </Border>
-
-                            <TextBlock Grid.Row="1" Text="APPLICATION LOGS" FontWeight="SemiBold" Foreground="{StaticResource SubTextBrush}" Margin="0,0,0,6"/>
-
-                            <!-- Log Output Box -->
-                            <Border Grid.Row="2" Background="{StaticResource InputBgBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="4" Padding="6">
-                                <ListBox ItemsSource="{Binding LogEntries}" 
-                                         Background="Transparent" 
-                                         BorderThickness="0" 
-                                         ScrollViewer.HorizontalScrollBarVisibility="Auto"
-                                         ScrollViewer.VerticalScrollBarVisibility="Auto"
-                                         FontFamily="Consolas" 
-                                         FontSize="11">
-                                    <ListBox.ItemTemplate>
+                        <Border Background="{StaticResource CardBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="8" Padding="16">
+                            <ScrollViewer MaxHeight="520" VerticalScrollBarVisibility="Auto">
+                                <ItemsControl ItemsSource="{Binding LogEntries}">
+                                    <ItemsControl.ItemTemplate>
                                         <DataTemplate>
-                                            <TextBlock Text="{Binding FormattedMessage}" Foreground="{Binding LevelColorBrush}"/>
+                                            <Grid Margin="0,2">
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="90" />
+                                                    <ColumnDefinition Width="80" />
+                                                    <ColumnDefinition Width="*" />
+                                                </Grid.ColumnDefinitions>
+                                                <TextBlock Grid.Column="0" Text="{Binding Timestamp, StringFormat={}{0:HH:mm:ss}}" Foreground="{StaticResource SubTextBrush}" FontFamily="Consolas" FontSize="11" />
+                                                <TextBlock Grid.Column="1" Text="{Binding LogLevel}" Foreground="{StaticResource PrimaryBrush}" FontWeight="Bold" FontSize="11" />
+                                                <TextBlock Grid.Column="2" Text="{Binding Message}" Foreground="{StaticResource TextBrush}" TextWrapping="Wrap" FontFamily="Consolas" FontSize="11" />
+                                            </Grid>
                                         </DataTemplate>
-                                    </ListBox.ItemTemplate>
-                                </ListBox>
-                            </Border>
-                        </Grid>
-                    </Grid>
-                </TabItem>
-            </TabControl>
-        </Grid>
-    </ScrollViewer>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                                </ScrollViewer>
+                        </Border>
+                    </StackPanel>
+                </Grid>
+
+                <!-- ================================================== -->
+                <!-- 6. TRANG CÀI ĐẶT (SETTINGS PAGE) -->
+                <!-- ================================================== -->
+                <Grid Visibility="{Binding IsSettingsSelected, Converter={StaticResource BoolToVis}}">
+                    <StackPanel>
+                        <TextBlock Text="CÀI ĐẶT HỆ THỐNG" FontSize="20" FontWeight="Bold" Foreground="{StaticResource PrimaryBrush}" Margin="0,0,0,16" />
+
+                        <!-- Section 1: Antigravity Settings -->
+                        <Border Background="{StaticResource CardBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="8" Padding="20,16" Margin="0,0,0,16">
+                            <StackPanel>
+                                <TextBlock Text="ANTIGRAVITY CLI" FontSize="13" FontWeight="Bold" Foreground="{StaticResource PrimaryBrush}" Margin="0,0,0,10" />
+
+                                <Grid Margin="0,0,0,10">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="130" />
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" Text="Đường dẫn:" Foreground="{StaticResource SubTextBrush}" VerticalAlignment="Center" />
+                                    <TextBox Grid.Column="1" Text="{Binding AntigravityPath, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,8,0" />
+                                    <Button Grid.Column="2" Content="Chọn..." Command="{Binding BrowseAntigravityCommand}" Padding="10,4" />
+                                </Grid>
+
+                                <StackPanel Orientation="Horizontal" Margin="0,0,0,12">
+                                    <TextBlock Text="Trạng thái: " Foreground="{StaticResource SubTextBrush}" Margin="0,0,4,0" />
+                                    <TextBlock Text="{Binding AntigravityStatusVietnamese}" FontWeight="Bold" Foreground="{StaticResource AccentBrush}" Margin="0,0,16,0" />
+
+                                    <TextBlock Text="Phiên bản: " Foreground="{StaticResource SubTextBrush}" Margin="0,0,4,0" />
+                                    <TextBlock Text="{Binding CliVersionText}" FontWeight="Bold" Foreground="{StaticResource TextBrush}" Margin="0,0,16,0" />
+
+                                    <TextBlock Text="Xác thực: " Foreground="{StaticResource SubTextBrush}" Margin="0,0,4,0" />
+                                    <TextBlock Text="{Binding AuthStateText}" FontWeight="Bold" Foreground="{StaticResource AccentBrush}" />
+                                </StackPanel>
+
+                                <WrapPanel>
+                                    <Button Content="Kiểm tra" Command="{Binding TestAntigravityCommand}" Margin="0,0,8,0" />
+                                    <Button Content="Cài đặt CLI" Command="{Binding InstallCliCommand}" Visibility="{Binding IsCliMissing, Converter={StaticResource BoolToVis}}" Background="{StaticResource WarningBrush}" Foreground="#1E1E2E" FontWeight="Bold" Margin="0,0,8,0" />
+                                    <Button Content="Đăng nhập" Command="{Binding AuthenticateCommand}" Visibility="{Binding IsAuthRequired, Converter={StaticResource BoolToVis}}" Background="{StaticResource PrimaryBrush}" Foreground="#1E1E2E" FontWeight="Bold" />
+                                </WrapPanel>
+                            </StackPanel>
+                        </Border>
+
+                        <!-- Section 2: Git Settings -->
+                        <Border Background="{StaticResource CardBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="8" Padding="20,16" Margin="0,0,0,16">
+                            <StackPanel>
+                                <TextBlock Text="GIT / GITHUB" FontSize="13" FontWeight="Bold" Foreground="{StaticResource PrimaryBrush}" Margin="0,0,0,10" />
+
+                                <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
+                                    <TextBlock Text="Git Version: " Foreground="{StaticResource SubTextBrush}" Margin="0,0,4,0" />
+                                    <TextBlock Text="{Binding GitVersionText}" FontWeight="Bold" Foreground="{StaticResource TextBrush}" Margin="0,0,16,0" />
+
+                                    <TextBlock Text="Repository: " Foreground="{StaticResource SubTextBrush}" Margin="0,0,4,0" />
+                                    <TextBlock Text="{Binding GitRepoText}" FontWeight="Bold" Foreground="{StaticResource TextBrush}" Margin="0,0,16,0" />
+
+                                    <TextBlock Text="Branch: " Foreground="{StaticResource SubTextBrush}" Margin="0,0,4,0" />
+                                    <TextBlock Text="{Binding GitBranchText}" FontWeight="Bold" Foreground="{StaticResource TextBrush}" />
+                                </StackPanel>
+
+                                <Button Content="Làm mới trạng thái Git" Command="{Binding RefreshGitCommand}" HorizontalAlignment="Left" />
+                            </StackPanel>
+                        </Border>
+
+                        <!-- Section 3: Optional Internal Brain Settings -->
+                        <Border Background="{StaticResource CardBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="8" Padding="20,16">
+                            <StackPanel>
+                                <TextBlock Text="AI NỘI BỘ (TÙY CHỌN)" FontSize="13" FontWeight="Bold" Foreground="{StaticResource PrimaryBrush}" Margin="0,0,0,4" />
+                                <TextBlock Text="Không cần thiết khi sử dụng ChatGPT Web làm bộ điều phối." FontSize="12" Foreground="{StaticResource SubTextBrush}" Margin="0,0,0,12" />
+
+                                <Grid Margin="0,0,0,10">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="130" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" Text="Nhà cung cấp AI:" Foreground="{StaticResource SubTextBrush}" VerticalAlignment="Center" />
+                                    <ComboBox Grid.Column="1" ItemsSource="{Binding BrainProviders}" SelectedItem="{Binding SelectedBrainProvider}" DisplayMemberPath="DisplayName" />
+                                </Grid>
+
+                                <Button Content="Thử nghiệm AI nội bộ" Command="{Binding TestBrainCommand}" HorizontalAlignment="Left" />
+                            </StackPanel>
+                        </Border>
+                    </StackPanel>
+                </Grid>
+
+            </Grid>
+        </ScrollViewer>
+    </Grid>
 </Window>

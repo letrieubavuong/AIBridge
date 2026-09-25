@@ -325,4 +325,83 @@ public class Phase08UiAndRuntimeTests : IDisposable
             await server.StopAsync();
         }
     }
+
+    [Fact]
+    public void SidebarNavigation_SwitchPages_UpdatesSelectedProperties()
+    {
+        var logService = new LogService();
+        var configService = new ConfigService(logService, Path.Combine(_testDir, "test_config.json"));
+        var taskRegistry = new TaskRegistry();
+        var taskService = new TaskService(logService, taskRegistry);
+        var envService = new AntigravityEnvironmentService(logService);
+        var runner = new AntigravityRunner(logService, envService);
+        var bridgeServer = new BridgeServer(configService, logService, taskService, taskRegistry, envService, runner);
+
+        var vm = new MainViewModel(configService, logService, taskService, envService, runner, bridgeServer);
+
+        Assert.Equal(NavigationPage.Overview, vm.CurrentPage);
+        Assert.True(vm.IsOverviewSelected);
+        Assert.False(vm.IsProjectSelected);
+
+        vm.NavigateCommand.Execute("Project");
+        Assert.Equal(NavigationPage.Project, vm.CurrentPage);
+        Assert.False(vm.IsOverviewSelected);
+        Assert.True(vm.IsProjectSelected);
+
+        vm.NavigateCommand.Execute("Execution");
+        Assert.Equal(NavigationPage.Execution, vm.CurrentPage);
+        Assert.True(vm.IsExecutionSelected);
+
+        vm.NavigateCommand.Execute("Connection");
+        Assert.Equal(NavigationPage.Connection, vm.CurrentPage);
+        Assert.True(vm.IsConnectionSelected);
+
+        vm.NavigateCommand.Execute("Logs");
+        Assert.Equal(NavigationPage.Logs, vm.CurrentPage);
+        Assert.True(vm.IsLogsSelected);
+
+        vm.NavigateCommand.Execute("Settings");
+        Assert.Equal(NavigationPage.Settings, vm.CurrentPage);
+        Assert.True(vm.IsSettingsSelected);
+    }
+
+    [Fact]
+    public void VietnameseStatusMapping_TranslatesStatuses_Correctly()
+    {
+        Assert.Equal("Sẵn sàng", MainViewModel.MapStatusToVietnamese("READY"));
+        Assert.Equal("Sẵn sàng", MainViewModel.MapStatusToVietnamese("FOUND"));
+        Assert.Equal("Sẵn sàng", MainViewModel.MapStatusToVietnamese("VALID"));
+        Assert.Equal("Đã dừng", MainViewModel.MapStatusToVietnamese("STOPPED"));
+        Assert.Equal("Đang chạy", MainViewModel.MapStatusToVietnamese("RUNNING"));
+        Assert.Equal("Có lỗi", MainViewModel.MapStatusToVietnamese("ERROR"));
+        Assert.Equal("Không tìm thấy", MainViewModel.MapStatusToVietnamese("NOT FOUND"));
+        Assert.Equal("Đã đăng nhập", MainViewModel.MapStatusToVietnamese("AUTHENTICATED"));
+        Assert.Equal("Cần đăng nhập", MainViewModel.MapStatusToVietnamese("AUTH REQUIRED"));
+        Assert.Equal("Đang chờ", MainViewModel.MapStatusToVietnamese("WAITING"));
+        Assert.Equal("Hoàn thành", MainViewModel.MapStatusToVietnamese("COMPLETED"));
+        Assert.Equal("Thất bại", MainViewModel.MapStatusToVietnamese("FAILED"));
+        Assert.Equal("Đang chờ đánh giá", MainViewModel.MapStatusToVietnamese("REVIEWING"));
+    }
+
+    [Fact]
+    public void NextActionCalculation_CalculatesCorrectAction_BasedOnState()
+    {
+        var logService = new LogService();
+        var configService = new ConfigService(logService, Path.Combine(_testDir, "test_config.json"));
+        var taskRegistry = new TaskRegistry();
+        var taskService = new TaskService(logService, taskRegistry);
+        var envService = new AntigravityEnvironmentService(logService);
+        var runner = new AntigravityRunner(logService, envService);
+        var bridgeServer = new BridgeServer(configService, logService, taskService, taskRegistry, envService, runner);
+
+        var vm = new MainViewModel(configService, logService, taskService, envService, runner, bridgeServer);
+
+        // Workspace not set
+        vm.WorkspacePath = string.Empty;
+        Assert.Equal("Chọn thư mục dự án", vm.NextActionText);
+
+        // Workspace set to test dir
+        vm.WorkspacePath = _testDir;
+        Assert.Equal("Bật kết nối ChatGPT", vm.NextActionText);
+    }
 }

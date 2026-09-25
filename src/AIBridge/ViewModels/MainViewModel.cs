@@ -10,6 +10,16 @@ using Microsoft.Win32;
 
 namespace AIBridge.ViewModels;
 
+public enum NavigationPage
+{
+    Overview,
+    Project,
+    Execution,
+    Connection,
+    Logs,
+    Settings
+}
+
 public class MainViewModel : ObservableObject
 {
     private readonly IConfigService _configService;
@@ -607,6 +617,207 @@ public class MainViewModel : ObservableObject
         set => SetProperty(ref _mcpActivityText, value);
     }
 
+    // --- NAVIGATION & VIETNAMESE UX PROPERTIES ---
+    private NavigationPage _currentPage = NavigationPage.Overview;
+
+    public NavigationPage CurrentPage
+    {
+        get => _currentPage;
+        set
+        {
+            if (SetProperty(ref _currentPage, value))
+            {
+                OnPropertyChanged(nameof(IsOverviewSelected));
+                OnPropertyChanged(nameof(IsProjectSelected));
+                OnPropertyChanged(nameof(IsExecutionSelected));
+                OnPropertyChanged(nameof(IsConnectionSelected));
+                OnPropertyChanged(nameof(IsLogsSelected));
+                OnPropertyChanged(nameof(IsSettingsSelected));
+            }
+        }
+    }
+
+    public bool IsOverviewSelected => CurrentPage == NavigationPage.Overview;
+    public bool IsProjectSelected => CurrentPage == NavigationPage.Project;
+    public bool IsExecutionSelected => CurrentPage == NavigationPage.Execution;
+    public bool IsConnectionSelected => CurrentPage == NavigationPage.Connection;
+    public bool IsLogsSelected => CurrentPage == NavigationPage.Logs;
+    public bool IsSettingsSelected => CurrentPage == NavigationPage.Settings;
+
+    public ICommand NavigateCommand { get; }
+    public ICommand ClearLogViewCommand { get; }
+    public ICommand CopyLogsCommand { get; }
+
+    public bool IsOverviewSystemReady =>
+        (IsMcpRunning || IsBridgeRunning) &&
+        !IsCliMissing &&
+        (AntigravityStatus.Contains("FOUND") || AntigravityStatus.Contains("Ready") || AntigravityStatus == "Sẵn sàng") &&
+        !string.IsNullOrWhiteSpace(WorkspacePath) &&
+        !WorkspaceStatus.Contains("INVALID") &&
+        !WorkspaceStatus.Contains("NOT FOUND");
+
+    public string SystemStatusText => IsOverviewSystemReady ? "● Hệ thống sẵn sàng" : "⚠ Cần thiết lập";
+    public string SystemStatusColor => IsOverviewSystemReady ? "#50FA7B" : "#FFB86C";
+
+    public string ChatGptStatusVietnamese => (IsMcpRunning || IsBridgeRunning) ? "Đã kết nối" : "Chưa kết nối";
+
+    public string AntigravityStatusVietnamese
+    {
+        get
+        {
+            if (IsCliMissing) return "Không tìm thấy";
+            if (AntigravityStatus.Contains("FOUND") || AntigravityStatus.Contains("Ready") || AntigravityStatus == "Sẵn sàng") return "Sẵn sàng";
+            if (AntigravityStatus.Contains("ERROR")) return "Có lỗi";
+            return MapStatusToVietnamese(AntigravityStatus);
+        }
+    }
+
+    public string GitStatusVietnamese
+    {
+        get
+        {
+            if (GitStatusText.Contains("FOUND") || GitStatusText.Contains("Valid") || GitStatusText.Contains("READY") || GitStatusText.Contains("Sẵn sàng")) return "Sẵn sàng";
+            if (GitStatusText.Contains("NOT A REPO") || GitStatusText.Contains("NOT INSTALLED")) return "Chưa có repository";
+            return GitStatusText;
+        }
+    }
+
+    public string WorkspaceStatusVietnamese
+    {
+        get
+        {
+            if (string.IsNullOrWhiteSpace(WorkspacePath) || !Directory.Exists(WorkspacePath))
+                return "⚠ Chưa chọn thư mục";
+            if (WorkspaceStatus.Contains("NOT FOUND") || WorkspaceStatus.Contains("INVALID"))
+                return "✕ Thư mục không tồn tại";
+            return "✓ Thư mục hợp lệ";
+        }
+    }
+
+    public string ProjectNameDisplay
+    {
+        get
+        {
+            if (!string.IsNullOrWhiteSpace(PlanningProjectNameText) && PlanningProjectNameText != "Student Manager App")
+                return PlanningProjectNameText;
+            if (!string.IsNullOrWhiteSpace(WorkspacePath) && Directory.Exists(WorkspacePath))
+                return Path.GetFileName(WorkspacePath);
+            return string.IsNullOrWhiteSpace(PlanningProjectNameText) ? "Chưa chọn dự án" : PlanningProjectNameText;
+        }
+    }
+
+    public string NextActionText
+    {
+        get
+        {
+            if (string.IsNullOrWhiteSpace(WorkspacePath) || !Directory.Exists(WorkspacePath) || WorkspaceStatus.Contains("INVALID"))
+            {
+                return "Chọn thư mục dự án";
+            }
+            if (!IsMcpRunning && !IsBridgeRunning)
+            {
+                return "Bật kết nối ChatGPT";
+            }
+            if (IsCliMissing)
+            {
+                return "Cài đặt Antigravity CLI";
+            }
+            if (IsAuthRequired)
+            {
+                return "Đăng nhập Antigravity CLI";
+            }
+            if (IsHumanApprovalRequired && CurrentPromptPackage != null)
+            {
+                return $"Cho phép thực thi Task {CurrentPromptPackage.TaskId}";
+            }
+            if (IsTaskRunning)
+            {
+                return "Đang thực thi công việc...";
+            }
+            if (HasEvidenceAvailable && (CurrentTaskStatusText == "ApprovedPendingReview" || CurrentTaskStatusText == "Completed"))
+            {
+                return "Đang chờ ChatGPT đánh giá kết quả";
+            }
+            if (CurrentProjectPlan == null)
+            {
+                return "Tạo kế hoạch dự án";
+            }
+            if (CurrentProjectPlan.Status != ProjectPlanStatus.Approved)
+            {
+                return "Phê duyệt kế hoạch dự án";
+            }
+            return "Sẵn sàng tiếp nhận công việc mới";
+        }
+    }
+
+    public string ExecutionStatusDisplay
+    {
+        get
+        {
+            if (IsTaskRunning) return "Đang thực thi công việc...";
+            if (CurrentTaskStatusText == "ApprovedPendingReview" || (HasEvidenceAvailable && CurrentTaskStatusText != "Failed"))
+            {
+                return "Antigravity đã hoàn thành — đang chờ ChatGPT đánh giá";
+            }
+            if (CurrentTaskStatusText == "Failed")
+            {
+                return "Thất bại";
+            }
+            if (CurrentTaskStatusText == "Completed" || CurrentTaskStatusText == "Passed")
+            {
+                return "Hoàn thành";
+            }
+            return MapStatusToVietnamese(CurrentTaskStatusText);
+        }
+    }
+
+    public bool IsHumanApprovalRequired
+    {
+        get
+        {
+            if (SelectedNode is TaskPlan task) return task.RequiresHumanApproval;
+            if (CurrentPromptPackage != null)
+            {
+                var taskPlan = CurrentProjectPlan?.Phases.SelectMany(p => p.Tasks).FirstOrDefault(t => t.TaskId == CurrentPromptPackage.TaskId);
+                if (taskPlan != null) return taskPlan.RequiresHumanApproval;
+            }
+            return false;
+        }
+    }
+
+    public static string MapStatusToVietnamese(string input)
+    {
+        if (string.IsNullOrWhiteSpace(input)) return "Chưa xác định";
+        var upper = input.Trim().ToUpperInvariant();
+        if (upper == "READY" || upper == "FOUND" || upper == "VALID") return "Sẵn sàng";
+        if (upper == "STOPPED" || upper == "DISCONNECTED") return "Đã dừng";
+        if (upper == "RUNNING" || upper == "STARTING" || upper == "EXECUTING") return "Đang chạy";
+        if (upper == "ERROR" || upper == "INVALID") return "Có lỗi";
+        if (upper == "NOT FOUND" || upper == "MISSING") return "Không tìm thấy";
+        if (upper == "AUTHENTICATED") return "Đã đăng nhập";
+        if (upper == "AUTH REQUIRED" || upper == "AUTH_REQUIRED") return "Cần đăng nhập";
+        if (upper == "WAITING" || upper == "PENDING" || upper == "PENDING_APPROVAL") return "Đang chờ";
+        if (upper == "COMPLETED" || upper == "APPROVED" || upper == "SUCCESS" || upper == "PASSED") return "Hoàn thành";
+        if (upper == "FAILED") return "Thất bại";
+        if (upper == "REVIEWING" || upper == "APPROVEDPENDINGREVIEW") return "Đang chờ đánh giá";
+        return input;
+    }
+
+    public void NotifyUiStateChanged()
+    {
+        OnPropertyChanged(nameof(IsOverviewSystemReady));
+        OnPropertyChanged(nameof(SystemStatusText));
+        OnPropertyChanged(nameof(SystemStatusColor));
+        OnPropertyChanged(nameof(ChatGptStatusVietnamese));
+        OnPropertyChanged(nameof(AntigravityStatusVietnamese));
+        OnPropertyChanged(nameof(GitStatusVietnamese));
+        OnPropertyChanged(nameof(WorkspaceStatusVietnamese));
+        OnPropertyChanged(nameof(ProjectNameDisplay));
+        OnPropertyChanged(nameof(NextActionText));
+        OnPropertyChanged(nameof(ExecutionStatusDisplay));
+        OnPropertyChanged(nameof(IsHumanApprovalRequired));
+    }
+
     public MainViewModel(
         IConfigService configService,
         ILogService logService,
@@ -716,6 +927,10 @@ public class MainViewModel : ObservableObject
         CancelExecutionCommand = new RelayCommand(ExecuteCancelExecution);
         ApproveExecutionCommand = new AsyncRelayCommand(ExecuteApproveExecutionAsync, CanApproveExecution);
 
+        NavigateCommand = new RelayCommand(ExecuteNavigate);
+        ClearLogViewCommand = new RelayCommand(ExecuteClearLogView);
+        CopyLogsCommand = new RelayCommand(ExecuteCopyLogs);
+
         ConfirmationDialogHandler = (message, title) =>
             System.Windows.MessageBox.Show(message, title, System.Windows.MessageBoxButton.YesNo, System.Windows.MessageBoxImage.Question) == System.Windows.MessageBoxResult.Yes;
 
@@ -725,6 +940,33 @@ public class MainViewModel : ObservableObject
         _bridgeServer.StatusChanged += OnBridgeStatusChanged;
 
         InitializeViewModel();
+    }
+
+    private void ExecuteNavigate(object? parameter)
+    {
+        if (parameter is string pageStr && Enum.TryParse<NavigationPage>(pageStr, true, out var page))
+        {
+            CurrentPage = page;
+        }
+        else if (parameter is NavigationPage navPage)
+        {
+            CurrentPage = navPage;
+        }
+    }
+
+    private void ExecuteClearLogView()
+    {
+        _logService.LogEntries.Clear();
+    }
+
+    private void ExecuteCopyLogs()
+    {
+        try
+        {
+            var text = string.Join(Environment.NewLine, LogEntries.Select(e => $"[{e.Timestamp:HH:mm:ss}] [{e.Level}] {e.Message}"));
+            Clipboard.SetText(text);
+        }
+        catch { }
     }
 
     private void InitializeViewModel()
@@ -852,6 +1094,7 @@ public class MainViewModel : ObservableObject
             OnPropertyChanged(nameof(BridgeStatusText));
             OnPropertyChanged(nameof(IsBridgeRunning));
             OnPropertyChanged(nameof(IsBridgeStopped));
+            NotifyUiStateChanged();
         });
     }
 
@@ -976,6 +1219,7 @@ public class MainViewModel : ObservableObject
                 _antigravityPath = info.ExecutablePath;
                 OnPropertyChanged(nameof(AntigravityPath));
             }
+            NotifyUiStateChanged();
         });
     }
 
