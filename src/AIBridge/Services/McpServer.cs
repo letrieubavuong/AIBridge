@@ -245,10 +245,6 @@ public class AIBridgeMcpToolHandlers
         {
             token = httpContext.Request.Headers["X-AIBridge-Token"];
         }
-        if (string.IsNullOrEmpty(token))
-        {
-            token = httpContext.Request.Query["token"];
-        }
 
         if (string.IsNullOrEmpty(token)) return false;
 

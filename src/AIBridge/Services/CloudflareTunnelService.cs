@@ -152,6 +152,30 @@ public class CloudflareTunnelService : ITunnelService
         return null;
     }
 
+    private static readonly string[] AllowedDownloadHosts = new[]
+    {
+        "github.com",
+        "api.github.com",
+        "github-releases.githubusercontent.com",
+        "objects.githubusercontent.com",
+        "cloudflare.com",
+        "downloads.cloudflare.com"
+    };
+
+    public static bool IsAllowedDownloadHost(string host)
+    {
+        if (string.IsNullOrWhiteSpace(host)) return false;
+        foreach (var allowed in AllowedDownloadHosts)
+        {
+            if (string.Equals(host, allowed, StringComparison.OrdinalIgnoreCase) ||
+                host.EndsWith("." + allowed, StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+        }
+        return false;
+    }
+
     public async Task<bool> InstallCloudflaredAsync(IProgress<double>? progress = null, CancellationToken cancellationToken = default)
     {
         SetStatus(TunnelStatus.Installing);
@@ -162,6 +186,7 @@ public class CloudflareTunnelService : ITunnelService
         Directory.CreateDirectory(targetDir);
 
         string downloadUrl = "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-windows-amd64.exe";
+        string tempFile = targetPath + ".tmp_" + Guid.NewGuid().ToString("N");
 
         try
         {
@@ -171,11 +196,27 @@ public class CloudflareTunnelService : ITunnelService
                 throw new InvalidOperationException("Only HTTPS download URLs are permitted.");
             }
 
-            string tempFile = targetPath + ".tmp_" + Guid.NewGuid().ToString("N");
+            if (!IsAllowedDownloadHost(uri.Host))
+            {
+                throw new InvalidOperationException($"Download URL host '{uri.Host}' is not in the allowed domain list.");
+            }
 
             using (var response = await _httpClient.GetAsync(downloadUrl, HttpCompletionOption.ResponseHeadersRead, cancellationToken))
             {
                 response.EnsureSuccessStatusCode();
+
+                var finalUri = response.RequestMessage?.RequestUri;
+                if (finalUri != null)
+                {
+                    if (!finalUri.Scheme.Equals("https", StringComparison.OrdinalIgnoreCase))
+                    {
+                        throw new InvalidOperationException($"Download redirect destination '{finalUri}' is not HTTPS.");
+                    }
+                    if (!IsAllowedDownloadHost(finalUri.Host))
+                    {
+                        throw new InvalidOperationException($"Download redirect destination host '{finalUri.Host}' is not in the allowed domain list.");
+                    }
+                }
 
                 long? totalBytes = response.Content.Headers.ContentLength;
                 using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
@@ -199,8 +240,14 @@ public class CloudflareTunnelService : ITunnelService
             FileInfo fi = new FileInfo(tempFile);
             if (fi.Length < 5 * 1024 * 1024)
             {
-                File.Delete(tempFile);
                 throw new InvalidOperationException("Downloaded cloudflared binary is corrupted or incomplete (< 5MB).");
+            }
+
+            // Verify executable identity before replacing target file
+            string? downloadedVersion = await FetchVersionAsync(tempFile);
+            if (string.IsNullOrWhiteSpace(downloadedVersion))
+            {
+                throw new InvalidOperationException("Downloaded binary failed cloudflared --version identity check.");
             }
 
             if (File.Exists(targetPath))
@@ -211,18 +258,27 @@ public class CloudflareTunnelService : ITunnelService
             File.Move(tempFile, targetPath);
             _executablePath = targetPath;
             _isPortable = true;
-            _version = await FetchVersionAsync(targetPath);
+            _version = downloadedVersion;
 
             var cfg = _configService.LoadConfig();
             cfg.CloudflaredPath = targetPath;
             _configService.SaveConfig(cfg);
 
-            _logService.LogInfo($"Cloudflare Tunnel installed successfully to {targetPath}");
+            _logService.LogInfo($"Cloudflare Tunnel installed successfully (version: {_version}) to {targetPath}");
             SetStatus(TunnelStatus.Stopped);
             return true;
         }
         catch (Exception ex)
         {
+            try
+            {
+                if (File.Exists(tempFile))
+                {
+                    File.Delete(tempFile);
+                }
+            }
+            catch { }
+
             _errorMessage = $"Install failed: {ex.Message}";
             _logService.LogError("Cloudflare Tunnel download error", ex);
             SetStatus(TunnelStatus.Error);
@@ -238,12 +294,36 @@ public class CloudflareTunnelService : ITunnelService
 
     public static string NormalizeTargetUrl(string targetLocalUrl)
     {
-        if (string.IsNullOrWhiteSpace(targetLocalUrl)) return "http://127.0.0.1:8799";
-        if (Uri.TryCreate(targetLocalUrl, UriKind.Absolute, out var uri))
+        if (string.IsNullOrWhiteSpace(targetLocalUrl))
         {
-            return $"{uri.Scheme}://{uri.Host}:{uri.Port}";
+            throw new ArgumentException("Target local URL for tunnel cannot be null or empty. The tunnel target must originate from IMcpServer.EndpointUrl.");
         }
-        return targetLocalUrl.TrimEnd('/');
+
+        if (!Uri.TryCreate(targetLocalUrl, UriKind.Absolute, out var uri))
+        {
+            throw new ArgumentException($"Target local URL '{targetLocalUrl}' is malformed.");
+        }
+
+        if (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps)
+        {
+            throw new ArgumentException($"Target local URL '{targetLocalUrl}' must use http or https scheme.");
+        }
+
+        bool isLoopback = uri.IsLoopback ||
+                         string.Equals(uri.Host, "127.0.0.1", StringComparison.OrdinalIgnoreCase) ||
+                         string.Equals(uri.Host, "localhost", StringComparison.OrdinalIgnoreCase);
+
+        if (!isLoopback)
+        {
+            throw new ArgumentException($"Target local URL '{targetLocalUrl}' must target a loopback address (127.0.0.1 or localhost).");
+        }
+
+        if (uri.Port == 9889)
+        {
+            throw new ArgumentException("Local Bridge port 9889 must NEVER be used as a public tunnel target.");
+        }
+
+        return $"{uri.Scheme}://{uri.Host}:{uri.Port}";
     }
 
     public static string? ParsePublicUrlFromOutput(string logLine)
@@ -416,12 +496,36 @@ public class CloudflareTunnelService : ITunnelService
                 _logService.LogInfo("Stopping Cloudflare Tunnel process...");
                 if (!proc.HasExited)
                 {
-                    proc.Kill(entireProcessTree: true);
-                    await proc.WaitForExitAsync();
+                    try
+                    {
+                        if (proc.CloseMainWindow())
+                        {
+                            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(3));
+                            await proc.WaitForExitAsync(cts.Token);
+                        }
+                    }
+                    catch (OperationCanceledException)
+                    {
+                        _logService.LogWarning("Cloudflare Tunnel process did not terminate gracefully within 3s timeout. Forcing termination...");
+                    }
+                    catch (Exception ex)
+                    {
+                        _logService.LogWarning($"Graceful shutdown attempt encountered exception: {ex.Message}");
+                    }
+
+                    if (!proc.HasExited)
+                    {
+                        _logService.LogInfo("Force-killing Cloudflare Tunnel process tree...");
+                        proc.Kill(entireProcessTree: true);
+                        await proc.WaitForExitAsync();
+                    }
                 }
                 proc.Dispose();
             }
-            catch { }
+            catch (Exception ex)
+            {
+                _logService.LogWarning($"Error stopping cloudflared process: {ex.Message}");
+            }
         }
 
         _publicUrl = null;

@@ -164,4 +164,126 @@ public class TunnelAndSelfTestTests : IDisposable
         Assert.Equal("MCP cục bộ: Đang hoạt động", vm.ChatGptStatusVietnamese);
         Assert.DoesNotContain("ChatGPT đã kết nối", vm.ChatGptStatusVietnamese);
     }
+
+    [Fact]
+    public void Token_NeverAppearsInMcpEndpointQueryString_Or_TunnelCommand()
+    {
+        string baseEndpoint = "http://127.0.0.1:8788/mcp";
+        string tunnelArgs = CloudflareTunnelService.BuildTunnelArguments(baseEndpoint);
+        string publicEndpoint = CloudflareTunnelService.FormatPublicMcpEndpoint("https://my-tunnel.trycloudflare.com");
+
+        Assert.DoesNotContain("token=", baseEndpoint);
+        Assert.DoesNotContain("?token", baseEndpoint);
+        Assert.DoesNotContain("token=", tunnelArgs);
+        Assert.DoesNotContain("?token", tunnelArgs);
+        Assert.DoesNotContain("token=", publicEndpoint);
+        Assert.DoesNotContain("?token", publicEndpoint);
+    }
+
+    [Fact]
+    public void NormalizeTargetUrl_EmptyOrNullTarget_ThrowsArgumentException_DoesNotFallbackTo8799()
+    {
+        var exEmpty = Assert.Throws<ArgumentException>(() => CloudflareTunnelService.NormalizeTargetUrl(""));
+        var exNull = Assert.Throws<ArgumentException>(() => CloudflareTunnelService.NormalizeTargetUrl(null!));
+        var exWhitespace = Assert.Throws<ArgumentException>(() => CloudflareTunnelService.NormalizeTargetUrl("   "));
+
+        Assert.Contains("cannot be null or empty", exEmpty.Message);
+        Assert.Contains("cannot be null or empty", exNull.Message);
+        Assert.Contains("cannot be null or empty", exWhitespace.Message);
+    }
+
+    [Fact]
+    public void NormalizeTargetUrl_MalformedOrNonLoopback_FailsSafely()
+    {
+        var exMalformed = Assert.Throws<ArgumentException>(() => CloudflareTunnelService.NormalizeTargetUrl("not-a-url"));
+        var exNonLoopback = Assert.Throws<ArgumentException>(() => CloudflareTunnelService.NormalizeTargetUrl("http://google.com:8788/mcp"));
+        var exNonHttp = Assert.Throws<ArgumentException>(() => CloudflareTunnelService.NormalizeTargetUrl("ftp://127.0.0.1:8788/mcp"));
+
+        Assert.Contains("malformed", exMalformed.Message);
+        Assert.Contains("loopback", exNonLoopback.Message);
+        Assert.Contains("http or https", exNonHttp.Message);
+    }
+
+    [Fact]
+    public void NormalizeTargetUrl_LocalBridgePort9889_IsRejected()
+    {
+        var ex = Assert.Throws<ArgumentException>(() => CloudflareTunnelService.NormalizeTargetUrl("http://127.0.0.1:9889/mcp"));
+        Assert.Contains("Local Bridge port 9889 must NEVER be used", ex.Message);
+    }
+
+    [Fact]
+    public void NormalizeTargetUrl_DerivesFromAuthoritativeTargetPort()
+    {
+        string result = CloudflareTunnelService.NormalizeTargetUrl("http://127.0.0.1:8999/mcp");
+        Assert.Equal("http://127.0.0.1:8999", result);
+    }
+
+    [Fact]
+    public void DownloadAllowlist_ValidatesOfficialDomains_RejectsUntrusted()
+    {
+        Assert.True(CloudflareTunnelService.IsAllowedDownloadHost("github.com"));
+        Assert.True(CloudflareTunnelService.IsAllowedDownloadHost("api.github.com"));
+        Assert.True(CloudflareTunnelService.IsAllowedDownloadHost("github-releases.githubusercontent.com"));
+        Assert.True(CloudflareTunnelService.IsAllowedDownloadHost("objects.githubusercontent.com"));
+        Assert.True(CloudflareTunnelService.IsAllowedDownloadHost("cloudflare.com"));
+        Assert.True(CloudflareTunnelService.IsAllowedDownloadHost("downloads.cloudflare.com"));
+
+        Assert.False(CloudflareTunnelService.IsAllowedDownloadHost("malicious-site.com"));
+        Assert.False(CloudflareTunnelService.IsAllowedDownloadHost("github.com.attacker.com"));
+        Assert.False(CloudflareTunnelService.IsAllowedDownloadHost("fakecloudflare.com"));
+    }
+
+    [Fact]
+    public void CheckInstallationAsync_DoesNotInstallAutomatically()
+    {
+        var logService = new LogService();
+        var configService = new ConfigService(logService, Path.Combine(_testDir, "test_config_noinst.json"));
+        var cfg = configService.LoadConfig();
+        cfg.CloudflaredPath = Path.Combine(_testDir, "non_existent_cloudflared.exe");
+        configService.SaveConfig(cfg);
+
+        var tunnelService = new CloudflareTunnelService(configService, logService);
+        var info = tunnelService.GetInfo();
+
+        Assert.False(tunnelService.IsInstalled);
+        Assert.Equal(TunnelStatus.NotInstalled, info.Status);
+        Assert.False(File.Exists(cfg.CloudflaredPath));
+    }
+
+    [Fact]
+    public void Exactly15Phase08McpTools_Preserved_NoHumanGate_NoShell()
+    {
+        Assert.Equal(15, McpSelfTestService.Expected15Tools.Length);
+
+        string[] expected = new[]
+        {
+            "ping_bridge",
+            "get_bridge_status",
+            "list_projects",
+            "get_project",
+            "get_project_progress",
+            "get_current_phase",
+            "get_dispatchable_tasks",
+            "get_task",
+            "prepare_task_execution",
+            "dispatch_task",
+            "get_current_execution",
+            "get_execution",
+            "cancel_execution",
+            "get_review_package",
+            "get_git_evidence"
+        };
+
+        foreach (var tool in expected)
+        {
+            Assert.Contains(tool, McpSelfTestService.Expected15Tools);
+        }
+
+        Assert.DoesNotContain(McpSelfTestService.Expected15Tools, t => t.Contains("approve", StringComparison.OrdinalIgnoreCase));
+        Assert.DoesNotContain(McpSelfTestService.Expected15Tools, t => t.Contains("human", StringComparison.OrdinalIgnoreCase));
+        Assert.DoesNotContain(McpSelfTestService.Expected15Tools, t => t.Equals("shell", StringComparison.OrdinalIgnoreCase));
+        Assert.DoesNotContain(McpSelfTestService.Expected15Tools, t => t.Equals("cmd", StringComparison.OrdinalIgnoreCase));
+        Assert.DoesNotContain(McpSelfTestService.Expected15Tools, t => t.Equals("write_file", StringComparison.OrdinalIgnoreCase));
+        Assert.DoesNotContain(McpSelfTestService.Expected15Tools, t => t.Equals("read_file", StringComparison.OrdinalIgnoreCase));
+    }
 }

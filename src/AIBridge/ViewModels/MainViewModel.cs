@@ -2038,6 +2038,17 @@ public class MainViewModel : ObservableObject
     private async Task ExecuteSetupTunnelAsync()
     {
         if (_tunnelService == null) return;
+
+        bool setupConfirmed = ConfirmationDialogHandler?.Invoke(
+            "Bạn có muốn tải và cài đặt phiên bản portable của Cloudflare Tunnel (cloudflared) vào %LOCALAPPDATA%\\AIBridge\\tools\\cloudflared không?\n\nThành phần này được sử dụng để tạo kết nối HTTPS công khai an toàn giữa ChatGPT Web và MCP server local.",
+            "Cài đặt Cloudflare Tunnel") ?? true;
+
+        if (!setupConfirmed)
+        {
+            _logService.LogInfo("Tunnel manual setup cancelled by user.");
+            return;
+        }
+
         _logService.LogInfo("User initiated manual Cloudflare Tunnel setup...");
         await _tunnelService.InstallCloudflaredAsync();
     }

@@ -58,18 +58,7 @@ public class McpSelfTestService : IMcpSelfTestService
         try
         {
             // 1. Check Server Connection & Initialize
-            Uri endpointUri;
-            if (!string.IsNullOrEmpty(apiToken))
-            {
-                var uriBuilder = new UriBuilder(mcpEndpointUrl);
-                string query = string.IsNullOrEmpty(uriBuilder.Query) ? $"token={apiToken}" : $"{uriBuilder.Query.TrimStart('?')}&token={apiToken}";
-                uriBuilder.Query = query;
-                endpointUri = uriBuilder.Uri;
-            }
-            else
-            {
-                endpointUri = new Uri(mcpEndpointUrl);
-            }
+            Uri endpointUri = new Uri(mcpEndpointUrl);
 
             var httpClient = new HttpClient();
             if (!string.IsNullOrEmpty(apiToken))
@@ -140,7 +129,7 @@ public class McpSelfTestService : IMcpSelfTestService
             {
                 try
                 {
-                    // Create unauthenticated client to verify rejection of protected tool get_bridge_status
+                    // Create unauthenticated client (no Authorization header) to verify rejection of protected tool get_bridge_status
                     var unauthTransport = new HttpClientTransport(new HttpClientTransportOptions
                     {
                         Endpoint = new Uri(mcpEndpointUrl)
@@ -149,21 +138,34 @@ public class McpSelfTestService : IMcpSelfTestService
                     var unauthResult = await unauthClient.CallToolAsync("get_bridge_status", new Dictionary<string, object?>());
                     string unauthText = GetContentText(unauthResult);
 
-                    if (unauthText.Contains("UNAUTHORIZED") || unauthText.Contains("Unauthorized"))
+                    if (unauthText.Contains("UNAUTHORIZED", StringComparison.OrdinalIgnoreCase) ||
+                        unauthText.Contains("Unauthorized", StringComparison.OrdinalIgnoreCase))
                     {
                         result.AuthenticationPassed = true;
-                        _logService.LogInfo("[MCP Self-Test] Step 4: Authentication Enforcement PASSED (Unauthenticated call rejected).");
+                        _logService.LogInfo("[MCP Self-Test] Step 4: Authentication Enforcement PASSED (Unauthenticated call explicitly rejected with UNAUTHORIZED).");
                     }
                     else
                     {
-                        result.Errors.Add("Authentication test failed: Unauthenticated request to protected tool was not rejected.");
+                        result.AuthenticationPassed = false;
+                        result.Errors.Add("Authentication test failed: Unauthenticated request to protected tool was not rejected with UNAUTHORIZED.");
+                        _logService.LogWarning("[MCP Self-Test] Step 4 FAILED: Unauthenticated call returned non-UNAUTHORIZED response.");
                     }
                 }
                 catch (Exception ex)
                 {
-                    // If transport or MCP error occurs for unauthenticated request, that confirms protection!
-                    result.AuthenticationPassed = true;
-                    _logService.LogInfo($"[MCP Self-Test] Step 4: Authentication Enforcement PASSED ({ex.Message}).");
+                    if (ex.Message.Contains("401", StringComparison.OrdinalIgnoreCase) ||
+                        ex.Message.Contains("Unauthorized", StringComparison.OrdinalIgnoreCase) ||
+                        ex.Message.Contains("UNAUTHORIZED", StringComparison.OrdinalIgnoreCase))
+                    {
+                        result.AuthenticationPassed = true;
+                        _logService.LogInfo($"[MCP Self-Test] Step 4: Authentication Enforcement PASSED ({ex.Message}).");
+                    }
+                    else
+                    {
+                        result.AuthenticationPassed = false;
+                        result.Errors.Add($"Authentication test inconclusive/failed: Unauthenticated request failed with non-auth exception ({ex.Message}).");
+                        _logService.LogWarning($"[MCP Self-Test] Step 4 INCONCLUSIVE: {ex.Message}");
+                    }
                 }
             }
             else

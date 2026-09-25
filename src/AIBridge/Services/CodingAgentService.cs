@@ -370,7 +370,7 @@ public class CodingAgentService : ICodingAgentService
         }
         catch (OperationCanceledException)
         {
-            bool isTimeout = timeoutCts.IsCancellationRequested && !cancellationToken.IsCancellationRequested;
+            bool isTimeout = timeoutCts.IsCancellationRequested;
 
             result = new CodingAgentExecutionResult
             {
